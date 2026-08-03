@@ -50,4 +50,4 @@ RUN mkdir -p /tmp/telegram-voice-transcriber && \
 
 USER transcriber
 
-ENTRYPOINT ["python", "-m", "app.main"]
+CMD ["python", "-m", "app.main"]
