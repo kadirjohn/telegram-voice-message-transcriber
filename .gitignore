@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+TELEGRAM_VOICE_TRANSCRIBER.md
+USTAGPT_API.md
