@@ -45,7 +45,7 @@ async def run_bot_async() -> None:
 
     bot = Bot(
         token=settings.TELEGRAM_BOT_TOKEN,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+        default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN),
     )
 
     dp = setup_dispatcher()
