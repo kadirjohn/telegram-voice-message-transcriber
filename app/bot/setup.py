@@ -3,7 +3,8 @@ from __future__ import annotations
 from aiogram import Dispatcher
 from aiogram.filters import CommandStart
 
-from app.bot.handlers import admin, groups, voice
+from app.bot.handlers import admin, groups, jobs, models, voice
+from app.bot.handlers import help as help_module
 from app.bot.middlewares.registration import RegistrationMiddleware
 from app.logging import get_logger
 from app.services.authorization import AuthorizationService
@@ -62,6 +63,9 @@ def setup_dispatcher() -> Dispatcher:
     dp.include_router(admin.router)
     dp.include_router(groups.router)
     dp.include_router(voice.router)
+    dp.include_router(models.router)
+    dp.include_router(jobs.router)
+    dp.include_router(help_module.router)
 
     # Register basic handlers
     dp.message.register(cmd_start, CommandStart())
