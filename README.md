@@ -1,10 +1,10 @@
 # Telegram Voice Message Transcriber
 
-Telegram gruplarındaki sesli mesajları **UstaGPT API**'sini kullanarak otomatik olarak yazıya çeviren, kendi kendine barındırılabilen (self-hosted) bir Telegram botu.
+A self-hosted Telegram bot that automatically transcribes voice messages in approved groups using the **UstaGPT API**.
 
-Bu proje **herhangi bir yapay zeka modeli eğitmez, barındırmaz veya yerel olarak çalıştırmaz.** Yalnızca Telegram voice message dosyalarını alıp UstaGPT'nin OpenAI uyumlu audio transcription API'sına gönderir.
+This project **does not train, host, or run any AI model locally.** It only receives Telegram voice message files and sends them to UstaGPT's OpenAI-compatible audio transcription API.
 
-## Mimari
+## Architecture
 
 ```
 Telegram  ──►  Bot (aiogram)  ──►  RQ Queue (Redis)  ──►  Worker  ──►  UstaGPT API
@@ -13,98 +13,98 @@ Telegram  ──►  Bot (aiogram)  ──►  RQ Queue (Redis)  ──►  Work
                                     PostgreSQL              FFmpeg (OGG→MP3)
 ```
 
-### Süreçler
+### Processes
 
-| Servis    | Görev                                                |
-|-----------|------------------------------------------------------|
-| `bot`     | Telegram güncellemelerini alır, işleri kuyruğa ekler |
-| `worker`  | Ses dosyasını indirir, dönüştürür, API'ya gönderir   |
-| `postgres`| Kalıcı veri (kullanıcılar, gruplar, iş kayıtları)    |
-| `redis`   | Dayanıklı kuyruk ve kısa süreli kilit/cache          |
+| Service   | Role                                                |
+|-----------|-----------------------------------------------------|
+| `bot`     | Receives Telegram updates, enqueues jobs            |
+| `worker`  | Downloads audio, converts, sends to API             |
+| `postgres`| Persistent data (users, groups, job records)        |
+| `redis`   | Durable queue and short-lived locks/cache           |
 
-## Gereksinimler
+## Requirements
 
-- Docker ve Docker Compose (v2)
-- Bir Telegram Bot Token ([@BotFather](https://t.me/BotFather))
-- Bir UstaGPT API anahtarı ([ustagpt.com.tr](https://ustagpt.com.tr))
-- Linux VPS (önerilen) veya Docker destekli herhangi bir sistem
+- Docker and Docker Compose (v2)
+- A Telegram Bot Token from [@BotFather](https://t.me/BotFather)
+- A UstaGPT API key from [ustagpt.com.tr](https://ustagpt.com.tr)
+- Linux VPS (recommended) or any Docker-capable system
 
-## Hızlı Başlangıç
+## Quick Start
 
 ```bash
-# 1. Repoyu klonla
+# 1. Clone the repository
 git clone <repo-url>
 cd telegram-voice-message-transcriber
 
-# 2. Ortam değişkenlerini yapılandır
+# 2. Configure environment variables
 cp .env.example .env
-# .env dosyasını düzenle: TELEGRAM_BOT_TOKEN, USTAGPT_API_KEY, OWNER_TELEGRAM_ID
+# Edit .env: set TELEGRAM_BOT_TOKEN, USTAGPT_API_KEY, OWNER_TELEGRAM_ID
 
-# 3. Stack'i başlat
+# 3. Start the stack
 make up
 
-# 4. Logları izle
+# 4. Follow the logs
 make logs
 ```
 
-## Komutlar
+## Commands
 
-| Komut | Açıklama |
-|-------|----------|
-| `make up` | Stack'i başlat |
-| `make down` | Stack'i durdur |
-| `make logs` | Tüm servis loglarını izle |
-| `make migrate` | Veritabanı migrationlarını çalıştır |
-| `make test` | Testleri çalıştır |
-| `make lint` | Ruff ile kod kalitesini kontrol et |
-| `make worker-scale count=3` | Worker sayısını ölçeklendir |
-| `make dashboard` | RQ Dashboard'u başlat (monitoring profili) |
+| Command | Description |
+|---------|-------------|
+| `make up` | Start the stack |
+| `make down` | Stop the stack |
+| `make logs` | Follow all service logs |
+| `make migrate` | Run database migrations |
+| `make test` | Run tests |
+| `make lint` | Run Ruff code quality checks |
+| `make worker-scale count=3` | Scale worker replicas |
+| `make dashboard` | Start RQ Dashboard (monitoring profile) |
 
-## Proje Yapısı
+## Project Structure
 
 ```
 ├── app/
-│   ├── bot/                  # aiogram handler, filter, keyboard, middleware
-│   │   ├── handlers/         # Komut ve mesaj işleyiciler
-│   │   ├── filters/         # Özel filtreler
-│   │   ├── keyboards/       # Inline klavyeler
-│   │   ├── middlewares/     # Ara katmanlar
-│   │   └── setup.py         # Dispatcher yapılandırması
-│   ├── db/                   # Veritabanı katmanı
-│   │   ├── models/          # SQLAlchemy modelleri
-│   │   ├── repositories/    # Veri erişim katmanı
-│   │   └── session.py       # Oturum yönetimi
-│   ├── services/            # İş mantığı servisleri
-│   ├── workers/             # RQ worker ve task tanımları
-│   ├── config.py            # Pydantic Settings yapılandırması
-│   ├── logging.py           # Yapılandırılmış JSON logging
-│   ├── queue.py             # RQ kuyruk fabrikası
-│   └── main.py              # Bot giriş noktası
-├── migrations/              # Alembic migrationları
-├── tests/                   # Testler
-├── .env.example             # Örnek yapılandırma
-├── Dockerfile               # Çok aşamalı Docker imajı
-├── docker-compose.yml       # Servis tanımları
-├── pyproject.toml           # Bağımlılıklar ve araç yapılandırması
-└── Makefile                 # Yardımcı komutlar
+│   ├── bot/                  # aiogram handlers, filters, keyboards, middlewares
+│   │   ├── handlers/         # Command and message handlers
+│   │   ├── filters/          # Custom filters
+│   │   ├── keyboards/        # Inline keyboards
+│   │   ├── middlewares/      # Middleware layers
+│   │   └── setup.py          # Dispatcher configuration
+│   ├── db/                   # Database layer
+│   │   ├── models/           # SQLAlchemy models
+│   │   ├── repositories/     # Data access layer
+│   │   └── session.py        # Session management
+│   ├── services/             # Business logic services
+│   ├── workers/              # RQ worker and task definitions
+│   ├── config.py             # Pydantic Settings configuration
+│   ├── logging.py            # Structured JSON logging
+│   ├── queue.py              # RQ queue factory
+│   └── main.py               # Bot entry point
+├── migrations/               # Alembic migrations
+├── tests/                    # Tests
+├── .env.example              # Example configuration
+├── Dockerfile                # Multi-stage Docker image
+├── docker-compose.yml        # Service definitions
+├── pyproject.toml            # Dependencies and tool configs
+└── Makefile                  # Helper commands
 ```
 
-## Teknoloji Yığını
+## Tech Stack
 
-- **Python 3.12** — ana çalışma zamanı
+- **Python 3.12** — primary runtime
 - **aiogram 3.x** — Telegram Bot framework
-- **PostgreSQL 16** — kalıcı veritabanı
-- **Redis 7** — kuyruk ve cache
-- **RQ** — dayanıklı iş kuyruğu
+- **PostgreSQL 16** — persistent database
+- **Redis 7** — queue and cache
+- **RQ** — durable job queue
 - **SQLAlchemy 2.x** — ORM
-- **Alembic** — migration yönetimi
-- **httpx** — HTTP istemcisi (UstaGPT API)
-- **Pydantic Settings 2.x** — yapılandırma yönetimi
-- **FFmpeg** — ses dönüşümü (OGG → MP3)
-- **Structlog** — yapılandırılmış JSON logging
-- **Ruff** — linting ve formatlama
+- **Alembic** — migration management
+- **httpx** — HTTP client (UstaGPT API)
+- **Pydantic Settings 2.x** — configuration management
+- **FFmpeg** — audio conversion (OGG → MP3)
+- **Structlog** — structured JSON logging
+- **Ruff** — linting and formatting
 - **pytest** — test framework
 
-## Lisans
+## License
 
 MIT
