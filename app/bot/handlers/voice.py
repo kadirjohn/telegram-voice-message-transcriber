@@ -103,7 +103,7 @@ async def _process_voice(message: Message, chat_id: int, settings) -> None:
     queue.enqueue(
         "app.workers.tasks.process_transcription_job",
         str(job.id),
-        job_id=f"tg:{chat_id}:{message.message_id}",
+        job_id=f"tg-{chat_id}-{message.message_id}",
         job_timeout=600,
         result_ttl=0,
     )

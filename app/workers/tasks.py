@@ -102,7 +102,7 @@ def process_transcription_job(job_id: str) -> None:
                         time_delta=settings.USTAGPT_RETRY_DELAY_SECONDS,
                         func="app.workers.tasks.process_transcription_job",
                         args=(job_id,),
-                        job_id=f"tg:{job.chat_id}:{job.source_message_id}",
+                        job_id=f"tg-{job.chat_id}-{job.source_message_id}",
                         job_timeout=600,
                         result_ttl=0,
                     )
