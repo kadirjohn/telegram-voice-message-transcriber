@@ -7,10 +7,10 @@ This project **does not train, host, or run any AI model locally.** It only rece
 ## Architecture
 
 ```
-Telegram  ──►  Bot (aiogram)  ──►  RQ Queue (Redis)  ──►  Worker  ──►  UstaGPT API
-                                        │                       │
-                                        ▼                       ▼
-                                    PostgreSQL              FFmpeg (OGG→MP3)
+Telegram ──► Bot (aiogram) ──► RQ Queue (Redis) ──► Worker ──► UstaGPT API
+                                       │                      │
+                                       ▼                      ▼
+                                   PostgreSQL             FFmpeg (OGG→MP3)
 ```
 
 ### Processes
@@ -18,9 +18,9 @@ Telegram  ──►  Bot (aiogram)  ──►  RQ Queue (Redis)  ──►  Work
 | Service   | Role                                                |
 |-----------|-----------------------------------------------------|
 | `bot`     | Receives Telegram updates, enqueues jobs            |
-| `worker`  | Downloads audio, converts, sends to API             |
-| `postgres`| Persistent data (users, groups, job records)        |
-| `redis`   | Durable queue and short-lived locks/cache           |
+| `worker`  | Downloads audio, converts to MP3, calls UstaGPT    |
+| `postgres`| Persistent data (users, groups, job records)       |
+| `redis`   | Durable queue and short-lived locks/cache          |
 
 ## Requirements
 
@@ -47,18 +47,123 @@ make up
 make logs
 ```
 
+## BotFather Setup
+
+1. Open Telegram and search for [@BotFather](https://t.me/BotFather)
+2. Send `/newbot` and follow the prompts
+3. Copy the bot token and add it to your `.env` file as `TELEGRAM_BOT_TOKEN`
+4. Disable privacy mode by sending `/setprivacy` to BotFather and selecting your bot, then choose **Disabled**
+5. Add the bot to your group as an **administrator** (it needs to read messages)
+
+## Group Approval Workflow
+
+1. Add the bot to your group as an administrator
+2. The bot detects it was added and marks the group as **PENDING**
+3. An owner or admin runs `/approve_here` inside the group
+4. The group becomes **APPROVED** and voice messages are now transcribed
+5. To revoke access, run `/revoke_here`
+
 ## Commands
+
+### General
 
 | Command | Description |
 |---------|-------------|
-| `make up` | Start the stack |
-| `make down` | Stop the stack |
-| `make logs` | Follow all service logs |
-| `make migrate` | Run database migrations |
-| `make test` | Run tests |
-| `make lint` | Run Ruff code quality checks |
-| `make worker-scale count=3` | Scale worker replicas |
-| `make dashboard` | Start RQ Dashboard (monitoring profile) |
+| `/start` | Start the bot |
+| `/help` | Show help message |
+| `/help_admin` | Show admin commands |
+| `/status` | Show bot status |
+
+### Owner Only
+
+| Command | Description |
+|---------|-------------|
+| `/admin_add <id>` | Promote a user to admin (or reply to their message) |
+| `/admin_remove <id>` | Demote an admin to user |
+| `/admins` | List all admins |
+| `/fallbacks_set m1,m2,...` | Set global fallback model order |
+| `/stats` | Show operational statistics |
+
+### Owner and Admin
+
+| Command | Description |
+|---------|-------------|
+| `/approve_here` | Approve the current group |
+| `/revoke_here` | Revoke the current group |
+| `/group_approve <id>` | Approve a group by chat ID |
+| `/group_revoke <id>` | Revoke a group by chat ID |
+| `/pending_groups` | List pending groups |
+| `/groups` | List all groups with status |
+| `/model` | Show active model chain |
+| `/model_set <id>` | Set primary model for this group |
+| `/fallbacks` | Show fallback model order |
+| `/language` | Show current language |
+| `/language_set <code>` | Set language (tr, en, auto, etc.) |
+| `/jobs_failed` | List failed jobs |
+| `/job_retry <id>` | Retry a failed job |
+
+## Model Selection and Fallback
+
+Supported models (from UstaGPT):
+
+- `whisper-1`
+- `gpt-4o-mini-transcribe`
+- `gpt-4o-transcribe`
+
+Default chain: `whisper-1` → `gpt-4o-mini-transcribe` → `gpt-4o-transcribe`
+
+When a model fails with a retryable error (timeout, 429, 5xx), the worker waits 30 seconds and tries the next model. Authentication errors (401, 403) stop the chain immediately.
+
+## UstaGPT Setup
+
+1. Go to [ustagpt.com.tr](https://ustagpt.com.tr) and create an account
+2. Generate an API key from your dashboard
+3. Add the key to your `.env` file as `USTAGPT_API_KEY`
+
+## Docker Deployment
+
+```bash
+# Start all services
+make up
+
+# View logs
+make logs
+
+# Run database migrations
+make migrate
+
+# Scale workers (e.g., 3 workers)
+make worker-scale count=3
+
+# Enable RQ Dashboard (monitoring profile)
+make dashboard
+```
+
+### Service URLs (localhost only)
+
+| Service | URL |
+|---------|-----|
+| PostgreSQL | `localhost:5432` |
+| Redis | `localhost:6379` |
+| RQ Dashboard | `localhost:9181` (when enabled) |
+
+## Backup and Restore
+
+```bash
+# Backup PostgreSQL
+docker compose exec postgres pg_dump -U transcriber transcriber > backup.sql
+
+# Restore PostgreSQL
+cat backup.sql | docker compose exec -T postgres psql -U transcriber transcriber
+```
+
+## Privacy and Transcript Retention
+
+- Audio files are **never stored permanently** — deleted immediately after processing
+- Transcript storage is configurable via `STORE_TRANSCRIPTS` and `TRANSCRIPT_RETENTION_HOURS`
+- API keys and bot tokens are **never logged**
+- Full transcripts are **not logged by default**
+- The bot only processes voice messages in explicitly approved groups
 
 ## Project Structure
 
@@ -66,22 +171,34 @@ make logs
 ├── app/
 │   ├── bot/                  # aiogram handlers, filters, keyboards, middlewares
 │   │   ├── handlers/         # Command and message handlers
-│   │   ├── filters/          # Custom filters
+│   │   ├── filters/          # Custom filters (role-based)
 │   │   ├── keyboards/        # Inline keyboards
-│   │   ├── middlewares/      # Middleware layers
+│   │   ├── middlewares/      # Middleware layers (registration)
 │   │   └── setup.py          # Dispatcher configuration
 │   ├── db/                   # Database layer
 │   │   ├── models/           # SQLAlchemy models
-│   │   ├── repositories/     # Data access layer
+│   │   ├── repositories/    # Data access layer
+│   │   ├── enums.py          # Enum definitions
+│   │   ├── base.py           # Declarative base
 │   │   └── session.py        # Session management
 │   ├── services/             # Business logic services
+│   │   ├── authorization.py  # Role-based access control
+│   │   ├── audio_converter.py# FFmpeg OGG→MP3 conversion
+│   │   ├── telegram_files.py # Telegram file download
+│   │   ├── transcript_delivery.py # Send transcripts to Telegram
+│   │   ├── ustagpt_client.py # UstaGPT API client
+│   │   ├── model_chain.py    # Model chain resolver
+│   │   └── exceptions.py     # Custom exception types
 │   ├── workers/              # RQ worker and task definitions
+│   │   ├── tasks.py          # Job processing logic
+│   │   └── worker.py         # Worker entry point
 │   ├── config.py             # Pydantic Settings configuration
 │   ├── logging.py            # Structured JSON logging
 │   ├── queue.py              # RQ queue factory
 │   └── main.py               # Bot entry point
 ├── migrations/               # Alembic migrations
 ├── tests/                    # Tests
+│   └── unit/                 # Unit tests
 ├── .env.example              # Example configuration
 ├── Dockerfile                # Multi-stage Docker image
 ├── docker-compose.yml        # Service definitions
@@ -104,6 +221,17 @@ make logs
 - **Structlog** — structured JSON logging
 - **Ruff** — linting and formatting
 - **pytest** — test framework
+
+## Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| Bot doesn't respond in group | Make the bot a group administrator |
+| Group stays PENDING | Run `/approve_here` inside the group |
+| Voice messages not transcribed | Check the group is APPROVED with `/groups` |
+| Worker errors | Check logs with `make logs` and look for error messages |
+| Database connection failed | Ensure PostgreSQL is healthy: `docker compose ps` |
+| UstaGPT API errors | Verify `USTAGPT_API_KEY` in `.env` is correct |
 
 ## License
 
