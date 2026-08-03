@@ -3,7 +3,10 @@ from __future__ import annotations
 from aiogram import Dispatcher
 from aiogram.filters import CommandStart
 
+from app.bot.handlers import admin, groups
+from app.bot.middlewares.registration import RegistrationMiddleware
 from app.logging import get_logger
+from app.services.authorization import AuthorizationService
 
 logger = get_logger(__name__)
 
@@ -47,6 +50,17 @@ async def cmd_help(message: object) -> None:
 def setup_dispatcher() -> Dispatcher:
     """Create and configure the aiogram Dispatcher."""
     dp = Dispatcher()
+
+    # Bootstrap owner on startup
+    auth = AuthorizationService()
+    auth.bootstrap_owner()
+
+    # Register middlewares
+    dp.message.middleware(RegistrationMiddleware())
+
+    # Register routers (handlers)
+    dp.include_router(admin.router)
+    dp.include_router(groups.router)
 
     # Register basic handlers
     dp.message.register(cmd_start, CommandStart())
