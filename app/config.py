@@ -31,7 +31,7 @@ class Settings(BaseSettings):
 
     # ── Database ─────────────────────────────────────────────────────────
     DATABASE_URL: str = Field(
-        default="postgresql+psycopg://transcriber:transcriber@postgres:5432/transcriber",
+        default="postgresql+psycopg2://transcriber:transcriber@postgres:5432/transcriber",
         min_length=1,
     )
 
