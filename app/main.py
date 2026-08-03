@@ -5,8 +5,6 @@ import signal
 
 import structlog
 from aiogram import Bot, Dispatcher
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
 
 from app.bot.setup import setup_dispatcher
 from app.config import get_settings
@@ -45,7 +43,6 @@ async def run_bot_async() -> None:
 
     bot = Bot(
         token=settings.TELEGRAM_BOT_TOKEN,
-        default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN),
     )
 
     dp = setup_dispatcher()
