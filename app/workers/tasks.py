@@ -119,23 +119,13 @@ def process_transcription_job(job_id: str) -> None:
             _notify_failure(job, last_error or "All models failed")
             return
 
-        # Deliver transcript
+        # Deliver transcript by editing the status message
         delivery = TranscriptDeliveryService()
         chat_id = job.chat_id
-        reply_id = job.source_message_id
         status_msg_id = job.status_message_id
 
         if status_msg_id:
             delivery.edit_status(chat_id, status_msg_id, transcript[:4096])
-
-        delivery.send_transcript(
-            chat_id=chat_id,
-            reply_to_message_id=reply_id,
-            transcript=transcript,
-            thread_id=job.source_thread_id,
-            model=model_chain[-1] if transcript else None,
-            show_footer=settings.SHOW_MODEL_FOOTER,
-        )
 
         job_repo.update_status(job_uuid, JobStatus.SUCCEEDED)
         log.info("job_completed")
