@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from aiogram import Dispatcher
-from aiogram.filters import CommandStart
+from aiogram.filters import Command, CommandStart
 
 from app.bot.handlers import admin, groups, jobs, models, voice
 from app.bot.handlers import help as help_module
@@ -69,7 +69,7 @@ def setup_dispatcher() -> Dispatcher:
 
     # Register basic handlers
     dp.message.register(cmd_start, CommandStart())
-    dp.message.register(cmd_help, CommandStart(commands=["help"]))
+    dp.message.register(cmd_help, Command(commands=["help"]))
 
     logger.info("dispatcher_configured")
     return dp

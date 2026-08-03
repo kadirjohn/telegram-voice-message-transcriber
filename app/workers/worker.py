@@ -26,7 +26,7 @@ def run_worker() -> None:
         queues=queue_names,
         connection=redis_conn,
         name=f"worker-{settings.APP_ENV}",
-        default_worker_ttl=420,
+        worker_ttl=420,
     )
 
     logger.info(
@@ -44,8 +44,8 @@ def run_worker() -> None:
     signal.signal(signal.SIGTERM, _shutdown)
     signal.signal(signal.SIGINT, _shutdown)
 
-    # Enable scheduler for delayed jobs (model fallback retries)
-    worker.work_with_scheduler()
+    # Start worker with scheduler support for delayed jobs
+    worker.work()
 
 
 if __name__ == "__main__":
