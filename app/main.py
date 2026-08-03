@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import signal
-from typing import NoReturn
 
 import structlog
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
+from app.bot.setup import setup_dispatcher
 from app.config import get_settings
 from app.logging import configure_logging, get_logger
 from app.queue import create_redis_connection
@@ -30,17 +30,16 @@ async def health_check() -> None:
         await asyncio.sleep(30)
 
 
-async def shutdown(bot: Bot, dispatcher: Dispatcher) -> None:
+async def shutdown(bot: Bot, _dispatcher: Dispatcher) -> None:
     """Graceful shutdown handler."""
     log = get_logger("shutdown")
     log.info("shutdown_initiated")
-    dispatcher.shutdown()
     await bot.session.close()
     log.info("shutdown_complete")
 
 
-def run_bot() -> NoReturn:
-    """Entry point for the bot process."""
+async def run_bot_async() -> None:
+    """Async entry point for the bot process."""
     configure_logging()
     settings = get_settings()
 
@@ -48,13 +47,15 @@ def run_bot() -> NoReturn:
         token=settings.TELEGRAM_BOT_TOKEN,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
-    dp = Dispatcher()
 
-    # Register health check as a background task
-    dp["health_task"] = asyncio.create_task(health_check())
+    dp = setup_dispatcher()
+
+    # Start health check as background task
+    health_task = asyncio.create_task(health_check())
 
     # Register shutdown handler
     async def on_shutdown(bot: Bot, dispatcher: Dispatcher) -> None:
+        health_task.cancel()
         await shutdown(bot, dispatcher)
 
     dp.shutdown.register(on_shutdown)
@@ -74,12 +75,18 @@ def run_bot() -> NoReturn:
     )
 
     try:
-        dp.run_polling(bot)
+        await dp.start_polling(bot)
     except Exception:
         logger.exception("bot_crashed")
         raise
     finally:
-        loop.run_until_complete(shutdown(bot, dp))
+        health_task.cancel()
+        await shutdown(bot, dp)
+
+
+def run_bot() -> None:
+    """Entry point for the bot process."""
+    asyncio.run(run_bot_async())
 
 
 if __name__ == "__main__":

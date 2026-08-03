@@ -5,7 +5,6 @@ import sys
 
 import structlog
 from rq import Worker
-from rq.connections import Connection
 from rq.worker import WorkerStatus
 
 from app.config import get_settings
@@ -23,12 +22,12 @@ def run_worker() -> None:
     redis_conn = create_redis_connection()
     queue_names = [settings.RQ_QUEUE_NAME]
 
-    with Connection(redis_conn):
-        worker = Worker(
-            queues=queue_names,
-            name=f"worker-{settings.APP_ENV}",
-            default_worker_ttl=420,
-        )
+    worker = Worker(
+        queues=queue_names,
+        connection=redis_conn,
+        name=f"worker-{settings.APP_ENV}",
+        default_worker_ttl=420,
+    )
 
     logger.info(
         "worker_starting",
