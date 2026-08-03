@@ -4,7 +4,8 @@ import signal
 import sys
 
 import structlog
-from rq import Connection, Worker
+from rq import Worker
+from rq.connections import Connection
 from rq.worker import WorkerStatus
 
 from app.config import get_settings
@@ -29,9 +30,6 @@ def run_worker() -> None:
             default_worker_ttl=420,
         )
 
-        # Enable scheduler for delayed jobs (model fallback retries)
-        worker.work_with_scheduler()
-
     logger.info(
         "worker_starting",
         queues=queue_names,
@@ -47,4 +45,9 @@ def run_worker() -> None:
     signal.signal(signal.SIGTERM, _shutdown)
     signal.signal(signal.SIGINT, _shutdown)
 
+    # Enable scheduler for delayed jobs (model fallback retries)
     worker.work_with_scheduler()
+
+
+if __name__ == "__main__":
+    run_worker()

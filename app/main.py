@@ -80,3 +80,7 @@ def run_bot() -> NoReturn:
         raise
     finally:
         loop.run_until_complete(shutdown(bot, dp))
+
+
+if __name__ == "__main__":
+    run_bot()
