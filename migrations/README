@@ -1,0 +1,7 @@
+Alembic database migrations for Telegram Voice Message Transcriber.
+
+Run migrations with:
+    make migrate
+
+Or manually:
+    alembic upgrade head

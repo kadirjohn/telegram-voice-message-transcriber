@@ -217,5 +217,21 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+# Project-specific
 TELEGRAM_VOICE_TRANSCRIBER.md
 USTAGPT_API.md
+plans/
+
+# Temporary audio files
+*.mp3
+*.ogg
+*.wav
+*.m4a
+*.webm
+
+# Environment
+.env
+.env.local
+
+# Docker
+.docker/

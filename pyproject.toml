@@ -1,0 +1,63 @@
+[project]
+name = "telegram-voice-message-transcriber"
+version = "0.1.0"
+description = "Telegram bot that transcribes voice messages via UstaGPT API"
+requires-python = ">=3.12"
+authors = [{ name = "Telegram Voice Transcriber Contributors" }]
+license = { text = "MIT" }
+
+dependencies = [
+    "aiogram>=3.18,<4",
+    "sqlalchemy>=2.0,<3",
+    "alembic>=1.14,<2",
+    "rq>=2.0,<3",
+    "httpx>=0.28,<1",
+    "pydantic>=2.10,<3",
+    "pydantic-settings>=2.7,<3",
+    "redis>=5.2,<6",
+    "psycopg2-binary>=2.9,<3",
+    "structlog>=25.1,<26",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3,<9",
+    "pytest-asyncio>=0.25,<1",
+    "ruff>=0.9,<1",
+    "pytest-cov>=6.0,<7",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "SIM", "ARG", "C4", "EM", "ERA", "G", "LOG", "PTH", "RSE", "T20"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+
+[tool.ruff.format]
+preview = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+asyncio_mode = "auto"
+pythonpath = ["."]
+markers = [
+    "live: marks tests that hit real external APIs (opt-in only)",
+    "integration: marks integration tests",
+]
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["*/tests/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "def __repr__",
+    "raise NotImplementedError",
+]

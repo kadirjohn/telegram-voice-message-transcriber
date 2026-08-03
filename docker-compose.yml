@@ -1,0 +1,115 @@
+services:
+  # ── PostgreSQL ──────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: tvmt-postgres
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: transcriber
+      POSTGRES_PASSWORD: transcriber
+      POSTGRES_DB: transcriber
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U transcriber -d transcriber"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - tvmt-net
+
+  # ── Redis ───────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: tvmt-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - tvmt-net
+
+  # ── Bot ─────────────────────────────────────────────────────────────────
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tvmt-bot
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+    volumes:
+      - temp_audio:/tmp/telegram-voice-transcriber
+    networks:
+      - tvmt-net
+    command: ["python", "-m", "app.main"]
+
+  # ── Worker ──────────────────────────────────────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tvmt-worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+    volumes:
+      - temp_audio:/tmp/telegram-voice-transcriber
+    networks:
+      - tvmt-net
+    command: ["python", "-m", "app.workers.worker"]
+
+  # ── RQ Dashboard (optional) ────────────────────────────────────────────
+  rq-dashboard:
+    image: eoranged/rq-dashboard:latest
+    container_name: tvmt-rq-dashboard
+    restart: unless-stopped
+    profiles:
+      - monitoring
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      RQ_DASHBOARD_REDIS_URL: redis://redis:6379/0
+      RQ_DASHBOARD_USERNAME: admin
+      RQ_DASHBOARD_PASSWORD: ${RQ_DASHBOARD_PASSWORD:-changeme}
+    ports:
+      - "127.0.0.1:9181:9181"
+    networks:
+      - tvmt-net
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  temp_audio:
+    driver: local
+
+networks:
+  tvmt-net:
+    driver: bridge
