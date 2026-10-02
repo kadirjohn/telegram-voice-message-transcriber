@@ -49,8 +49,11 @@ class Settings(BaseSettings):
         min_length=1,
     )
     USTAGPT_LANGUAGE: str = Field(default="tr", min_length=1)
+    # UstaGPT's /v1/audio/transcriptions returns HTTP 502 for text, srt and vtt
+    # (only json, or omitting the field, succeeds). json is the safe default;
+    # _extract_transcript() parses {"text": ...} responses correctly.
     USTAGPT_RESPONSE_FORMAT: str = Field(
-        default="text",
+        default="json",
         pattern=r"^(json|text|srt|vtt)$",
     )
     USTAGPT_CONNECT_TIMEOUT_SECONDS: int = Field(default=10, ge=1, le=60)
