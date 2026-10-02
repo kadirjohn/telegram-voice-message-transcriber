@@ -240,6 +240,110 @@ ama içinde farklı sürümler olur. Bugün oltu.
 
 ---
 
+## 8. Container image boyutu (664 MB) — ertelenmiş, düşük aciliyet
+
+**Durum:** `[~]` ölçüldü, uygulanmadı — 3 Ekim 2026'da "disk tamam, bırak" kararıyla kapatıldı
+
+### Ölçüm (arm64, host aarch64)
+
+```
+bot image      664 MB
+worker image   664 MB   (ikisi de aynı Dockerfile'dan)
+postgres       288 MB   (bu projeye ait değil, paylaşımlı tag)
+redis           42 MB
+```
+
+Container içi dağılım:
+
+```
+/usr                     634 MB
+  /usr/lib               430 MB
+    /usr/lib/aarch64-linux-gnu  428 MB
+      libLLVM.so.19.1           118 MB   ← x265 VIDEO codec'inin JIT'i
+      libgallium-25.0.7         34 MB   ← OpenGL
+      libz3.so.4                 26 MB
+      libcodec2.so.1.2           17 MB
+      libavcodec.so.61           14 MB   ← ffmpeg (GEREKLİ)
+      libavfilter.so.10          13 MB   ← ffmpeg (GEREKLİ)
+      libx265.so.215              9 MB   ← video codec (GEREKSIZ)
+      libplacebo.so.349           9 MB
+/usr/local              140 MB   (Python base 132 + pip paketleri ~108)
+/usr/share               29 MB
+/usr/bin                 30 MB
+ffmpeg binary'i           1 MB
+```
+
+`python:3.12-slim` base tek başına 149 MB. Yani 664 - 149 = ~515 MB bizim eklediğimiz.
+
+### Kırılabilecek olan
+`libLLVM` (118 MB) + `libx265` (9 MB) + mesa/OpenGL (`libgallium` 34 MB, `libplacebo` 9 MB) +
+`libz3` (26 MB) → **~200 MB tamamen gereksiz**. Bunların tamamı Debian `ffmpeg`
+paketinin video codec ve grafik bağımlılıklarından geliyor. Proje sadece ses
+decode + mp3 encode yapıyor.
+
+Paket listesi ölçümü (site-packages): sqlalchemy 29 MB, psycopg2 16 MB, pip 14 MB,
+aiogram 10 MB, aiohttp 9 MB, pydantic_core 5 MB — bunlar gerekli, `pip` 14 MB
+ise kurulumdan sonra silinebilir.
+
+### Önerilen çözüm: statik ffmpeg
+`/usr/local/bin/ffmpeg` olarak statik build (~40 MB, tek dosya). Tüm formatları
+destekler (OGG/Opus, M4A, MP3, FLAC, WAV), hiçbir `.so` bağımlılığı yok.
+`audio_converter.py` değişmeden çalışır, `ffmpeg` komutu aynı kalır.
+
+Tahmini sonuç: **664 MB → ~250 MB**
+
+### Neden ertelendi
+Disk baskısı yok. Bu oturumda 8.9 GB dangling image + build cache temizliği yapıldı,
+gereksiz yer sorunu kalmadı. Image boyutu bir konfor meselesi, sorun değil.
+
+### Dikkat edilecek kısıt
+**Format desteği korunmalı.** Telegram sesli mesajları OGG/Opus gelir ama
+M4A/MP3/FLAC da gelebilir. Debian `ffmpeg` paketinden codec'leri teker teker
+çıkarmak (`libavcodec61 libavformat61 libavutil59 libmp3lame0 libopus0 libogg0`)
+yalnızca ~430 MB'a indiriyor (ölçüldü) ve `ffmpeg`/`ffprobe` binary'leri
+gittiği için `audio_converter.py`'de subprocess değişikliği gerekiyor.
+Statik build bu riski ortadan kaldırır — bu yüzden tercih edildi.
+
+### Geri dönüş notu
+`git checkout Dockerfile` ile geri alınabilir, kod değişikliği gerekmez.
+
+---
+
+## 9. Temizlik yapılırken diğer projelere dikkat
+
+**Durum:** `[x]` çözüldü (2026-10-03)
+
+Bu oturumda disk temizliği yapılırken `docker image prune` komutunun **tüm
+projeleri** kapsadığı doğrulandı — projeler arası ayrım yok.
+
+Kontrol edilmeden silinmesi tehlikeli bulunan image:
+
+```
+4db228bee7e7  272MB  postgres:16-alpine (eski, 14 Mayıs)
+  → filesfly-db container'ı BU image'a dayanıyor (Up 3 days)
+```
+
+Silinmedi. Docker çalışan container'ın kullandığı image'ı zaten prune'da
+atlıyor, ama bilerek doğrulandı.
+
+**Kural:** `docker image prune -f` çalıştırmadan önce
+`docker images -f "dangling=true"` çıktısını al ve her image'ın
+`docker ps -a` içinde kullanıcısını doğrula:
+
+```bash
+docker inspect <container> --format '{{.Image}}' | grep <image-id>
+```
+
+Bu oturumda 14 dangling image silindi (12 × 664 MB + 2 × 650 MB, hepsi bu
+projeye ait), `filesfly`'nin postgres image'ı korundu. Kazanç: ~8.9 GB.
+
+### Not
+`docker system df` çıktısındaki `RECLAIMABLE` değeri yanıltıcıdır: silinen
+katmanlar diğer image'larla paylaşıldığı için gerçek kazanç (652 MB) toplam
+silinen image boyutundan (8.9 GB) çok daha küçüktür.
+
+---
+
 ## Çözülenler (referans)
 
 | Commit | Konu |
@@ -250,6 +354,7 @@ ama içinde farklı sürümler olur. Bugün oltu.
 | `4158277` | Varsayılan model `gemini-3.8-flash` |
 | `13cfd06` | RQ scheduler açıldı — retry işleri artık kuyruğa taşınıyor |
 | `00097bb` | Prompt "Türkçeye çevir" yerine "olduğu dilde yazıya dök" |
+| `4383f13` | MEDIA.md — açık sorunlar listesi |
 
 ---
 
