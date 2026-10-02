@@ -78,6 +78,16 @@ class JobRepository:
         self._session.execute(stmt)
         self._session.commit()
 
+    def set_current_attempt(self, job_id: uuid.UUID, attempt: int) -> None:
+        """Persist how many models have been attempted, so a retry resumes."""
+        stmt = (
+            update(TranscriptionJob)
+            .where(TranscriptionJob.id == job_id)
+            .values(current_attempt=attempt)
+        )
+        self._session.execute(stmt)
+        self._session.commit()
+
     def update_status(
         self, job_id: uuid.UUID, status: JobStatus
     ) -> TranscriptionJob | None:

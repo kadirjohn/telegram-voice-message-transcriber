@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import timedelta
 
 import structlog
 
@@ -62,15 +63,23 @@ def process_transcription_job(job_id: str) -> None:
             from app.services.model_chain import default_model_chain
             model_chain = default_model_chain()
 
+        # Resume where the previous attempt stopped. Without this a retry would
+        # start the chain over and retry the same failing model forever.
+        start_idx = min(job.current_attempt or 0, len(model_chain) - 1)
+        if start_idx:
+            log.info("resuming_model_chain", start_index=start_idx)
+
         client = UstaGPTClient()
         transcript = None
         last_error = None
 
-        for attempt_idx, model in enumerate(model_chain):
+        for attempt_idx, model in enumerate(model_chain[start_idx:], start=start_idx):
             attempt_no = attempt_idx + 1
             log.info("transcription_attempt", model=model, attempt=attempt_no)
 
             job_repo.update_status(job_uuid, JobStatus.TRANSCRIBING)
+            # Advance the resume point before trying, so a retry moves on.
+            job_repo.set_current_attempt(job_uuid, attempt_idx + 1)
 
             try:
                 language = job.language or settings.USTAGPT_LANGUAGE
@@ -95,11 +104,15 @@ def process_transcription_job(job_id: str) -> None:
                 log.warning("retriable_error", model=model, error=last_error)
 
                 if attempt_idx < len(model_chain) - 1:
-                    # Schedule next attempt with next model after 30 seconds
+                    # Schedule the next attempt with the next model.
+                    # RQ's enqueue_in does `now() + time_delta`, so it needs a
+                    # timedelta — passing the raw int setting raises TypeError.
                     job_repo.update_status(job_uuid, JobStatus.RETRY_WAIT)
                     queue = create_queue()
                     queue.enqueue_in(
-                        time_delta=settings.USTAGPT_RETRY_DELAY_SECONDS,
+                        time_delta=timedelta(
+                            seconds=settings.USTAGPT_RETRY_DELAY_SECONDS
+                        ),
                         func="app.workers.tasks.process_transcription_job",
                         args=(job_id,),
                         job_id=f"tg-{job.chat_id}-{job.source_message_id}",

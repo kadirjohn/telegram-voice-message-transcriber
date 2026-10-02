@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     )
     USTAGPT_CONNECT_TIMEOUT_SECONDS: int = Field(default=10, ge=1, le=60)
     USTAGPT_READ_TIMEOUT_SECONDS: int = Field(default=120, ge=1, le=600)
+    # Wait before retrying the next model in the chain after a retryable error.
+    USTAGPT_RETRY_DELAY_SECONDS: int = Field(default=30, ge=1, le=600)
 
     # ── Voice / Media ────────────────────────────────────────────────────
     MAX_VOICE_FILE_BYTES: int = Field(default=20_971_520, ge=1, le=20_971_520)
