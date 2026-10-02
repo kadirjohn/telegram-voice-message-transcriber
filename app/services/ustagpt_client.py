@@ -27,10 +27,12 @@ RETRYABLE_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
 # HTTP status codes that are usually permanent regardless of model
 PERMANENT_STATUSES = frozenset({400, 413, 415, 422})
 
-# Asked to return only the transcript, with no preamble or commentary.
+# Transcribe, do not translate: the recording may be in any language and must be
+# written in the language actually spoken. Asking for a specific output language
+# makes the model translate instead, which is wrong for a transcription bot.
 _TRANSCRIBE_PROMPT = (
-    "Bu ses kaydını birebir Türkçe yazılara çevir. "
-    "Sadece çeviri metnini yaz; başka hiçbir şey yazma."
+    "Bu ses kaydını birebir yazıya dök. Konuşma hangi dildeyse o dilde yaz; "
+    "çeviri yapma, dil değiştirme. Sadece metni yaz, başka hiçbir şey yazma."
 )
 
 # Gemini often wraps the answer in a preamble or quotes even when asked not to.
@@ -142,6 +144,10 @@ class UstaGPTClient:
 
         Used for Gemini-class models, which perceive audio natively but reject
         the OpenAI-shaped /v1/audio/transcriptions endpoint.
+
+        The ``language`` setting is deliberately not forwarded: these models
+        detect the spoken language themselves, and naming an output language in
+        the prompt makes them translate rather than transcribe.
         """
         encoded = base64.b64encode(audio_path.read_bytes()).decode("ascii")
         if len(encoded) > MAX_CHAT_AUDIO_BASE64_BYTES:

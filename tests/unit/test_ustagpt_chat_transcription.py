@@ -18,7 +18,11 @@ from app.services.model_chain import (
     resolve_model_chain,
     uses_chat_endpoint,
 )
-from app.services.ustagpt_client import UstaGPTClient, _clean_transcript
+from app.services.ustagpt_client import (
+    _TRANSCRIBE_PROMPT,
+    UstaGPTClient,
+    _clean_transcript,
+)
 
 
 @pytest.fixture
@@ -145,6 +149,24 @@ class TestChatTranscription:
     def test_size_limit_constant_is_sane(self) -> None:
         assert MAX_CHAT_AUDIO_BASE64_BYTES >= 5 * 1024 * 1024
         assert MAX_CHAT_AUDIO_BASE64_BYTES <= 30 * 1024 * 1024
+
+
+class TestTranscribePrompt:
+    def test_prompt_does_not_force_an_output_language(self) -> None:
+        """Regression: naming an output language makes the model translate.
+
+        A German recording came back in Turkish because the prompt asked for
+        "Türkçe yazılara çevir". The prompt must ask for a verbatim transcript
+        in whatever language is spoken.
+        """
+        prompt = _TRANSCRIBE_PROMPT.lower()
+        for banned in ("türkçe yazılara", "türkçeye çevir", "ingilizce"):
+            assert banned not in prompt
+
+    def test_prompt_asks_for_verbatim_transcript(self) -> None:
+        prompt = _TRANSCRIBE_PROMPT.lower()
+        assert "yazıya dök" in prompt
+        assert "çeviri yapma" in prompt
 
 
 class TestCleanTranscript:
