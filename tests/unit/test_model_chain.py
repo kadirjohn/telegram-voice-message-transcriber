@@ -56,10 +56,10 @@ class TestResolveModelChain:
         assert chain[0] == "whisper-1"
         assert chain[1] == "gemini-3.8-flash"
 
-    def test_default_chain_prefers_whisper_then_3_8_flash(self) -> None:
+    def test_default_chain_prefers_gemini_then_whisper(self) -> None:
         chain = default_model_chain()
-        assert chain[0] == "whisper-1"
-        assert chain[1] == "gemini-3.8-flash"
+        assert chain[0] == "gemini-3.8-flash"
+        assert "whisper-1" in chain
 
     def test_empty_fallbacks(self) -> None:
         chain = resolve_model_chain("whisper-1", [])

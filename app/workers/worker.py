@@ -44,8 +44,11 @@ def run_worker() -> None:
     signal.signal(signal.SIGTERM, _shutdown)
     signal.signal(signal.SIGINT, _shutdown)
 
-    # Start worker with scheduler support for delayed jobs
-    worker.work()
+    # with_scheduler=True is required: retryable errors are rescheduled with
+    # enqueue_in(), and RQ's work() defaults to with_scheduler=False. Without
+    # the scheduler those delayed jobs stay in rq:scheduled:<queue> forever and
+    # are never moved into the queue, so every retried job hangs in RETRY_WAIT.
+    worker.work(with_scheduler=True)
 
 
 if __name__ == "__main__":
