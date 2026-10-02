@@ -335,12 +335,40 @@ docker inspect <container> --format '{{.Image}}' | grep <image-id>
 ```
 
 Bu oturumda 14 dangling image silindi (12 × 664 MB + 2 × 650 MB, hepsi bu
-projeye ait), `filesfly`'nin postgres image'ı korundu. Kazanç: ~8.9 GB.
+projeye ait), `filesfly`'nin postgres image'ı korundu.
 
-### Not
-`docker system df` çıktısındaki `RECLAIMABLE` değeri yanıltıcıdır: silinen
-katmanlar diğer image'larla paylaşıldığı için gerçek kazanç (652 MB) toplam
-silinen image boyutundan (8.9 GB) çok daha küçüktür.
+### Doğrulama sonucu
+Silinen 14 image'ın tamamı bu projeye aitti. 28 çalışan container'ın tamamı
+temizlikten sonra da ayaktaydı; diğer projelerin (`ustagpt-*`, `n8n`,
+`open-webui`, `filesfly`, `vaultwarden`, `searxng`, `kadir-portfolio`,
+`kcloud`, `captcha-proxy`, `beszel-agent`, `portainer`, `tailscale`) image'ları
+yerinde kaldı. `docker builder prune` yalnızca build cache siler — image veya
+container'a dokunmaz; etkisi yalnızca sonraki build'lerin biraz yavaş olması.
+
+### Dikkat: image adı ararken slash/tire karışır
+`files-fly-filesfly` (tireli) ile `files-fly/filesfly` (slash) farklı image'lardır.
+Doğrulama yaparken bu karışıklık "YOK" gibi görünebilir. Doğru kontrol:
+
+```bash
+docker inspect <container> --format '{{.Image}}'          # calisan SHA
+docker image inspect <repo>:<tag> --format '{{.Id}}'       # image SHA
+```
+
+Eşleşiyorsa image sağlamdır.
+
+### Not: `RECLAIMABLE` yanıltıcıdır
+14 image silindi, toplam nominal boyutları ~8.9 GB. Ama gerçek disk kazancı
+sadece **652 MB** oldu (`Images 9.249 GB → 8.597 GB`), artı build cache'ten 286 MB.
+
+Neden: bu 14 image'in katmanları büyük ölçüde `python:3.12-slim` base ile
+ortaktı ve o base hâlâ kullanımda. `docker system df` bir image'in boyutunu
+katmanlarının toplamı olarak yazar, ama diskte sadece o image'a özgü olan
+katmanlar silinir. Bu yüzden "14 × 664 MB = 8.6 GB silindi" gibi hesaplar
+gerçekte çok şişirilmiş sonuç verir.
+
+### İlgili: watchtower restart döngüsünde
+Temizlik sırasında tespit edildi, temizlikle ilgisi yok:
+`watchtower` → `Restarting (1)`, sürekli restart ediyor. Ayrı izlenmeli.
 
 ---
 
