@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import re
 from pathlib import Path
 
 import httpx
@@ -11,6 +13,10 @@ from app.services.exceptions import (
     UstaGPTPermanentError,
     UstaGPTTemporaryError,
 )
+from app.services.model_chain import (
+    MAX_CHAT_AUDIO_BASE64_BYTES,
+    uses_chat_endpoint,
+)
 
 # HTTP status codes that should stop the entire model chain
 AUTH_STATUSES = frozenset({401, 403})
@@ -20,6 +26,45 @@ RETRYABLE_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
 
 # HTTP status codes that are usually permanent regardless of model
 PERMANENT_STATUSES = frozenset({400, 413, 415, 422})
+
+# Asked to return only the transcript, with no preamble or commentary.
+_TRANSCRIBE_PROMPT = (
+    "Bu ses kaydını birebir Türkçe yazılara çevir. "
+    "Sadece çeviri metnini yaz; başka hiçbir şey yazma."
+)
+
+# Gemini often wraps the answer in a preamble or quotes even when asked not to.
+_PREAMBLE_RE = re.compile(
+    r"^\s*(?:"
+    r"ses (?:kaydının|kaydinin)\s+d[öo]k[üu]m[üu]\s+şu\s+şekildedir\s*:?\.?|"
+    r"işte\s+(?:d[öo]k[üu]m|çeviri|transkripsiyon)\s*:?|"
+    r"d[öo]k[üu]m\s*:?|"
+    r"çeviri\s*:?|"
+    r"transkript\s*:?|"
+    r"transcription\s*:?"
+    r")\s*",
+    re.IGNORECASE,
+)
+
+
+def _clean_transcript(text: str) -> str:
+    """Strip the wrappers chat models add around an otherwise clean answer."""
+    cleaned = text.strip()
+    previous = None
+    while cleaned != previous:
+        previous = cleaned
+        cleaned = _PREAMBLE_RE.sub("", cleaned).strip()
+
+    # Models often quote the whole answer; only unwrap when both quotes match.
+    pairs = (('"', '"'), ("“", "”"), ("'", "'"))
+    for opening, closing in pairs:
+        if len(cleaned) > 2 and cleaned.startswith(opening) and cleaned.endswith(
+            closing
+        ):
+            cleaned = cleaned[1:-1].strip()
+            break
+
+    return cleaned
 
 
 class UstaGPTClient:
@@ -44,6 +89,9 @@ class UstaGPTClient:
     ) -> str:
         """Send an audio file to UstaGPT and return the transcript text.
 
+        Dispatches on the model: Gemini-class models only accept audio through
+        /v1/chat/completions, everything else through /v1/audio/transcriptions.
+
         Args:
             audio_path: Path to the MP3 file to transcribe.
             model: One of the supported model IDs.
@@ -54,11 +102,13 @@ class UstaGPTClient:
 
         Raises:
             UstaGPTAuthError: API key is invalid or missing.
-            UstaGPTRateLimitError: Rate limited.
             UstaGPTTemporaryError: Temporary server error.
             UstaGPTPermanentError: Request error that won't be fixed by retry.
             EmptyTranscriptError: Response was empty.
         """
+        if uses_chat_endpoint(model):
+            return self._transcribe_via_chat(audio_path, model)
+
         url = f"{self._base_url}/v1/audio/transcriptions"
 
         data: dict[str, str] = {
@@ -86,6 +136,90 @@ class UstaGPTClient:
                 )
 
         return self._handle_response(response)
+
+    def _transcribe_via_chat(self, audio_path: Path, model: str) -> str:
+        """Transcribe by sending the audio inline to /v1/chat/completions.
+
+        Used for Gemini-class models, which perceive audio natively but reject
+        the OpenAI-shaped /v1/audio/transcriptions endpoint.
+        """
+        encoded = base64.b64encode(audio_path.read_bytes()).decode("ascii")
+        if len(encoded) > MAX_CHAT_AUDIO_BASE64_BYTES:
+            msg = (
+                "Ses kaydı chat üzerinden gönderilemeyecek kadar büyük "
+                f"({len(encoded) / 1024 / 1024:.1f} MB base64, sınır "
+                f"{MAX_CHAT_AUDIO_BASE64_BYTES / 1024 / 1024:.0f} MB)"
+            )
+            raise UstaGPTPermanentError(msg)
+
+        payload = {
+            "model": model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": _TRANSCRIBE_PROMPT},
+                        {
+                            "type": "input_audio",
+                            "input_audio": {
+                                "data": encoded,
+                                "format": "mp3",
+                            },
+                        },
+                    ],
+                }
+            ],
+            "temperature": 0,
+        }
+
+        url = f"{self._base_url}/v1/chat/completions"
+        with httpx.Client(timeout=self._timeout) as client:
+            response = client.post(
+                url,
+                headers={
+                    "Authorization": f"Bearer {self._api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+
+        return self._handle_chat_response(response)
+
+    def _handle_chat_response(self, response: httpx.Response) -> str:
+        """Classify a chat completion response and return the transcript."""
+        status = response.status_code
+
+        if status // 100 == 2:
+            transcript = _clean_transcript(self._extract_chat_content(response))
+            if not transcript:
+                msg = "UstaGPT returned a successful response with an empty transcript"
+                raise EmptyTranscriptError(msg)
+            return transcript
+
+        if status in AUTH_STATUSES:
+            msg = f"UstaGPT returned HTTP {status} — API key is invalid or missing"
+            raise UstaGPTAuthError(msg)
+
+        if status in RETRYABLE_STATUSES:
+            msg = f"UstaGPT returned HTTP {status}: {self._safe_error(response)}"
+            raise UstaGPTTemporaryError(msg)
+
+        msg = f"UstaGPT returned HTTP {status}: {self._safe_error(response)}"
+        raise UstaGPTPermanentError(msg)
+
+    def _extract_chat_content(self, response: httpx.Response) -> str:
+        """Pull the assistant text out of a chat completion payload."""
+        try:
+            payload = response.json()
+            choices = payload.get("choices")
+            if isinstance(choices, list) and choices:
+                message = choices[0].get("message") or {}
+                content = message.get("content")
+                if isinstance(content, str):
+                    return content.strip()
+        except Exception:  # noqa: BLE001 - fall back to the raw body
+            pass
+        return response.text.strip()
 
     def _handle_response(self, response: httpx.Response) -> str:
         """Classify the response and return transcript or raise."""
