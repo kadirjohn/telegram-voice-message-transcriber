@@ -13,6 +13,7 @@ TRANSCRIPTION_ENDPOINT_MODELS = frozenset({
 # POST /v1/chat/completions with an inline base64 `input_audio` part. The
 # transcription endpoint rejects these with HTTP 400.
 CHAT_AUDIO_MODELS = frozenset({
+    "gemini-3.8-flash",
     "gemini-3-flash-preview",
     "gemini-3.5-flash",
     "gemini-3.7-flash",

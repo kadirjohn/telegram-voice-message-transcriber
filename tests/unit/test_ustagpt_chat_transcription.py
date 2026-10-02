@@ -59,7 +59,7 @@ def _chat_response(status: int, content: str | None = None) -> MagicMock:
 
 class TestTransportSelection:
     def test_gemini_models_use_chat_endpoint(self) -> None:
-        assert uses_chat_endpoint("gemini-3-flash-preview")
+        assert uses_chat_endpoint("gemini-3.8-flash")
         assert uses_chat_endpoint("gemini-2.5-pro")
 
     def test_openai_models_use_transcription_endpoint(self) -> None:
@@ -84,7 +84,7 @@ class TestChatTranscription:
         self, client: UstaGPTClient, audio: Path
     ) -> None:
         with self._patched_post("Merhaba") as mock_post:
-            result = client.transcribe(audio_path=audio, model="gemini-3-flash-preview")
+            result = client.transcribe(audio_path=audio, model="gemini-3.8-flash")
 
         assert result == "Merhaba"
         assert mock_post.call_args.args[0].endswith("/v1/chat/completions")
@@ -110,24 +110,24 @@ class TestChatTranscription:
     ) -> None:
         noisy = 'Ses kaydının dökümü şu şekildedir:\n\n"Gökhan bir kere."'
         with self._patched_post(noisy):
-            result = client.transcribe(audio_path=audio, model="gemini-3-flash-preview")
+            result = client.transcribe(audio_path=audio, model="gemini-3.8-flash")
         assert result == "Gökhan bir kere."
 
     def test_empty_completion_raises(self, client: UstaGPTClient, audio: Path) -> None:
         with self._patched_post("  "), pytest.raises(EmptyTranscriptError):
-            client.transcribe(audio_path=audio, model="gemini-3-flash-preview")
+            client.transcribe(audio_path=audio, model="gemini-3.8-flash")
 
     def test_auth_error_stops_chain(self, client: UstaGPTClient, audio: Path) -> None:
         with self._patched_post(status=401), pytest.raises(UstaGPTAuthError):
-            client.transcribe(audio_path=audio, model="gemini-3-flash-preview")
+            client.transcribe(audio_path=audio, model="gemini-3.8-flash")
 
     def test_502_is_retryable(self, client: UstaGPTClient, audio: Path) -> None:
         with self._patched_post(status=502), pytest.raises(UstaGPTTemporaryError):
-            client.transcribe(audio_path=audio, model="gemini-3-flash-preview")
+            client.transcribe(audio_path=audio, model="gemini-3.8-flash")
 
     def test_413_is_permanent(self, client: UstaGPTClient, audio: Path) -> None:
         with self._patched_post(status=413), pytest.raises(UstaGPTPermanentError):
-            client.transcribe(audio_path=audio, model="gemini-3-flash-preview")
+            client.transcribe(audio_path=audio, model="gemini-3.8-flash")
 
     def test_oversized_audio_rejected_before_sending(
         self, client: UstaGPTClient, monkeypatch: pytest.MonkeyPatch
@@ -139,7 +139,7 @@ class TestChatTranscription:
         big.read_bytes.return_value = b"x" * 100
         with patch.object(httpx.Client, "post") as mock_post:
             with pytest.raises(UstaGPTPermanentError, match="büyük"):
-                client.transcribe(audio_path=big, model="gemini-3-flash-preview")
+                client.transcribe(audio_path=big, model="gemini-3.8-flash")
             mock_post.assert_not_called()
 
     def test_size_limit_constant_is_sane(self) -> None:
@@ -171,21 +171,21 @@ class TestCleanTranscript:
 class TestModelChain:
     def test_whisper_first_then_gemini(self) -> None:
         chain = resolve_model_chain(
-            "whisper-1", ["gemini-3-flash-preview", "gpt-4o-transcribe"]
+            "whisper-1", ["gemini-3.8-flash", "gpt-4o-transcribe"]
         )
         assert chain[0] == "whisper-1"
-        assert chain[1] == "gemini-3-flash-preview"
+        assert chain[1] == "gemini-3.8-flash"
 
     def test_gemini_kept_in_chain(self) -> None:
-        chain = resolve_model_chain("whisper-1", ["gemini-3-flash-preview"])
-        assert "gemini-3-flash-preview" in chain
+        chain = resolve_model_chain("whisper-1", ["gemini-3.8-flash"])
+        assert "gemini-3.8-flash" in chain
 
     def test_unknown_model_dropped(self) -> None:
         assert resolve_model_chain("whisper-1", ["boyle-model-yok"]) == ["whisper-1"]
 
     def test_duplicates_removed(self) -> None:
         chain = resolve_model_chain(
-            "whisper-1", ["whisper-1", "gemini-3-flash-preview"]
+            "whisper-1", ["whisper-1", "gemini-3.8-flash"]
         )
         assert chain.count("whisper-1") == 1
 
@@ -193,7 +193,7 @@ class TestModelChain:
         chain = resolve_model_chain(
             "whisper-1",
             [
-                "gemini-3-flash-preview",
+                "gemini-3.8-flash",
                 "gemini-2.5-pro",
                 "gpt-4o-transcribe",
                 "gpt-4o-mini-transcribe",

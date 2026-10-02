@@ -4,6 +4,7 @@ from app.services.model_chain import (
     CHAT_AUDIO_MODELS,
     SUPPORTED_MODELS,
     TRANSCRIPTION_ENDPOINT_MODELS,
+    default_model_chain,
     resolve_model_chain,
     uses_chat_endpoint,
 )
@@ -50,10 +51,15 @@ class TestResolveModelChain:
     def test_whisper_first_then_gemini(self) -> None:
         chain = resolve_model_chain(
             "whisper-1",
-            ["gemini-3-flash-preview", "gpt-4o-transcribe"],
+            ["gemini-3.8-flash", "gpt-4o-transcribe"],
         )
         assert chain[0] == "whisper-1"
-        assert chain[1] == "gemini-3-flash-preview"
+        assert chain[1] == "gemini-3.8-flash"
+
+    def test_default_chain_prefers_whisper_then_3_8_flash(self) -> None:
+        chain = default_model_chain()
+        assert chain[0] == "whisper-1"
+        assert chain[1] == "gemini-3.8-flash"
 
     def test_empty_fallbacks(self) -> None:
         chain = resolve_model_chain("whisper-1", [])
