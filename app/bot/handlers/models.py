@@ -7,7 +7,7 @@ from aiogram.types import Message
 from app.bot.filters.role_filter import RoleFilter
 from app.config import get_settings
 from app.db.repositories.group_repository import GroupRepository
-from app.services.model_chain import SUPPORTED_MODELS, resolve_model_chain
+from app.services.model_chain import SUPPORTED_MODELS, group_model_chain
 
 router = Router(name="models")
 group_repo = GroupRepository()
@@ -26,12 +26,9 @@ async def cmd_model(message: Message) -> None:
         await message.answer("Bu grup henüz kaydedilmemiş.")
         return
 
-    chain = group.model_chain or []
-    if not chain:
-        from app.services.model_chain import default_model_chain
-        chain = default_model_chain()
+    chain = group_model_chain(group)
 
-    lines = [f"{i+1}. `{m}`" for i, m in enumerate(chain)]
+    lines = [f"{i + 1}. `{m}`" for i, m in enumerate(chain)]
     await message.answer("🎙 **Model Zinciri:**\n\n" + "\n".join(lines))
 
 
@@ -62,11 +59,7 @@ async def cmd_model_set(message: Message, command: CommandObject) -> None:
         await message.answer("Bu grup henüz kaydedilmemiş.")
         return
 
-    settings = get_settings()
-    fallbacks = group.fallback_models or settings.USTAGPT_FALLBACK_MODELS_LIST
-    chain = resolve_model_chain(primary=model, fallbacks=fallbacks)
     group.primary_model = model
-    group.model_chain = chain
     group_repo._session.commit()
 
     await message.answer(f"✅ Birincil model `{model}` olarak ayarlandı.")
@@ -77,7 +70,7 @@ async def cmd_fallbacks(message: Message) -> None:
     """Show the fallback model order."""
     settings = get_settings()
     fallbacks = settings.USTAGPT_FALLBACK_MODELS_LIST
-    lines = [f"{i+1}. `{m}`" for i, m in enumerate(fallbacks)]
+    lines = [f"{i + 1}. `{m}`" for i, m in enumerate(fallbacks)]
     await message.answer("🔁 **Yedek Model Sırası:**\n\n" + "\n".join(lines))
 
 
@@ -98,9 +91,7 @@ async def cmd_fallbacks_set(message: Message, command: CommandObject) -> None:
         return
 
     # Store in env — for persistent storage this would go to DB
-    await message.answer(
-        f"✅ Yedek model sırası güncellendi: {', '.join(models)}"
-    )
+    await message.answer(f"✅ Yedek model sırası güncellendi: {', '.join(models)}")
 
 
 @router.message(Command("language"), RoleFilter.admin())
@@ -112,7 +103,9 @@ async def cmd_language(message: Message) -> None:
         return
 
     group = group_repo.get_by_chat_id(chat.id)
-    lang = group.language if group and group.language else "tr"
+    lang = (
+        group.language if group and group.language else get_settings().USTAGPT_LANGUAGE
+    )
     await message.answer(f"🌐 **Dil:** `{lang}`")
 
 
@@ -132,6 +125,9 @@ async def cmd_language_set(message: Message, command: CommandObject) -> None:
         return
 
     lang = command.args.strip().lower()
+    if lang != "auto" and (len(lang) != 2 or not lang.isascii() or not lang.isalpha()):
+        await message.answer("Dil için iki harfli bir kod veya `auto` kullanın.")
+        return
     group = group_repo.get_by_chat_id(chat.id)
     if group is None:
         await message.answer("Bu grup henüz kaydedilmemiş.")

@@ -48,4 +48,12 @@ class TestResolveModelChain:
         assert "whisper-1" in SUPPORTED_MODELS
         assert "gpt-4o-mini-transcribe" in SUPPORTED_MODELS
         assert "gpt-4o-transcribe" in SUPPORTED_MODELS
-        assert len(SUPPORTED_MODELS) == 3
+        assert "gemini-2.5-flash" in SUPPORTED_MODELS
+        assert "gemini-2.5-pro" in SUPPORTED_MODELS
+        assert "gemini-3.8-flash" in SUPPORTED_MODELS
+        assert len(SUPPORTED_MODELS) == 6
+
+    def test_gemini_can_fallback_to_transcription_models(self) -> None:
+        assert resolve_model_chain(
+            "gemini-2.5-flash", ["gpt-4o-transcribe", "gpt-4o-mini-transcribe"]
+        ) == ["gemini-2.5-flash", "gpt-4o-transcribe", "gpt-4o-mini-transcribe"]

@@ -9,7 +9,7 @@ from aiogram.types import Message
 from app.bot.filters.role_filter import RoleFilter
 from app.db.enums import JobStatus
 from app.db.repositories.job_repository import JobRepository
-from app.queue import create_queue
+from app.queue import create_queue, transcription_job_timeout
 
 router = Router(name="jobs")
 job_repo = JobRepository()
@@ -35,10 +35,9 @@ async def cmd_jobs_failed(message: Message) -> None:
 
     lines = []
     for job in failed[:10]:
-        short_id = str(job.id)[:8]
+        job_id = str(job.id)
         lines.append(
-            f"• `{short_id}` — chat {job.chat_id}, "
-            f"mesaj {job.source_message_id}"
+            f"• `{job_id}` — chat {job.chat_id}, mesaj {job.source_message_id}"
         )
     await message.answer("❌ **Başarısız İşler:**\n\n" + "\n".join(lines))
 
@@ -77,8 +76,9 @@ async def cmd_job_retry(message: Message, command: CommandObject) -> None:
     queue.enqueue(
         "app.workers.tasks.process_transcription_job",
         str(job.id),
-        job_id=f"tg:{job.chat_id}:{job.source_message_id}",
-        job_timeout=600,
+        job_timeout=transcription_job_timeout(
+            job.duration_seconds, model_count=len(job.model_chain or []) or 3
+        ),
         result_ttl=0,
     )
 

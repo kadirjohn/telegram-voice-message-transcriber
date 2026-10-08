@@ -4,14 +4,11 @@ import subprocess
 from pathlib import Path
 
 from app.config import get_settings
-
-
-class AudioConversionError(RuntimeError):
-    """Raised when FFmpeg conversion fails."""
+from app.services.exceptions import AudioConversionError
 
 
 class AudioConverter:
-    """Converts OGG/Opus voice messages to MP3 for UstaGPT."""
+    """Decode Telegram audio to mono 16 kHz audio supported by UstaGPT."""
 
     def __init__(self) -> None:
         self._settings = get_settings()
@@ -29,23 +26,37 @@ class AudioConverter:
         Raises:
             AudioConversionError: If conversion fails or output is invalid.
         """
-        output_path = output_dir / f"{input_path.stem}.mp3"
+        return self._convert(input_path, output_dir, "mp3")
+
+    def convert_to_wav(self, input_path: Path, output_dir: Path) -> Path:
+        """Decode to PCM without adding another lossy compression step."""
+        return self._convert(input_path, output_dir, "wav")
+
+    def _convert(self, input_path: Path, output_dir: Path, extension: str) -> Path:
+        output_path = output_dir / f"{input_path.stem}.decoded.{extension}"
         timeout = self._settings.FFMPEG_TIMEOUT_SECONDS
 
         cmd = [
             "ffmpeg",
             "-hide_banner",
-            "-loglevel", "error",
+            "-loglevel",
+            "error",
             "-y",
-            "-i", str(input_path),
+            "-i",
+            str(input_path),
             "-vn",
-            "-map_metadata", "-1",
-            "-ac", "1",
-            "-ar", "16000",
-            "-c:a", "libmp3lame",
-            "-b:a", "64k",
-            str(output_path),
+            "-map_metadata",
+            "-1",
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
         ]
+        if extension == "wav":
+            cmd.extend(["-c:a", "pcm_s16le"])
+        else:
+            cmd.extend(["-c:a", "libmp3lame", "-b:a", "64k"])
+        cmd.append(str(output_path))
 
         try:
             subprocess.run(
@@ -62,6 +73,9 @@ class AudioConverter:
             raise AudioConversionError(msg) from exc
         except subprocess.TimeoutExpired as exc:
             msg = f"FFmpeg timed out after {timeout}s"
+            raise AudioConversionError(msg) from exc
+        except FileNotFoundError as exc:
+            msg = "FFmpeg is not installed"
             raise AudioConversionError(msg) from exc
 
         if not self._validate_output(output_path):
@@ -81,9 +95,12 @@ class AudioConverter:
         cmd = [
             "ffprobe",
             "-hide_banner",
-            "-loglevel", "error",
-            "-show_entries", "format=duration",
-            "-of", "csv=p=0",
+            "-loglevel",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "csv=p=0",
             str(path),
         ]
         try:
@@ -93,5 +110,10 @@ class AudioConverter:
                 return False
             duration = float(duration_str)
             return duration > 0
-        except (subprocess.CalledProcessError, ValueError):
+        except (
+            subprocess.CalledProcessError,
+            subprocess.TimeoutExpired,
+            FileNotFoundError,
+            ValueError,
+        ):
             return False

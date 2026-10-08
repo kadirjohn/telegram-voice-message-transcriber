@@ -45,7 +45,7 @@ def run_worker() -> None:
     signal.signal(signal.SIGINT, _shutdown)
 
     # Start worker with scheduler support for delayed jobs
-    worker.work()
+    worker.work(with_scheduler=True)
 
 
 if __name__ == "__main__":

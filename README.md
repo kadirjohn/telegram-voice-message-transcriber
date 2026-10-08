@@ -2,7 +2,7 @@
 
 A self-hosted Telegram bot that automatically transcribes voice messages in approved groups using the **UstaGPT API**.
 
-This project **does not train, host, or run any AI model locally.** It only receives Telegram voice message files and sends them to UstaGPT's OpenAI-compatible audio transcription API.
+This project **does not train, host, or run any AI model locally.** It prepares Telegram voice recordings and sends their audio to UstaGPT's transcription API or native Gemini API.
 
 ## Architecture
 
@@ -10,7 +10,7 @@ This project **does not train, host, or run any AI model locally.** It only rece
 Telegram ──► Bot (aiogram) ──► RQ Queue (Redis) ──► Worker ──► UstaGPT API
                                        │                      │
                                        ▼                      ▼
-                                   PostgreSQL             FFmpeg (OGG→MP3)
+                                   PostgreSQL             FFmpeg + speech detection
 ```
 
 ### Processes
@@ -18,7 +18,7 @@ Telegram ──► Bot (aiogram) ──► RQ Queue (Redis) ──► Worker ─
 | Service   | Role                                                |
 |-----------|-----------------------------------------------------|
 | `bot`     | Receives Telegram updates, enqueues jobs            |
-| `worker`  | Downloads audio, converts to MP3, calls UstaGPT    |
+| `worker`  | Downloads audio, prepares speech-only WAV chunks, calls UstaGPT |
 | `postgres`| Persistent data (users, groups, job records)       |
 | `redis`   | Durable queue and short-lived locks/cache          |
 
@@ -104,15 +104,50 @@ make logs
 
 ## Model Selection and Fallback
 
-Supported models (from UstaGPT):
+Supported models (through UstaGPT):
 
 - `whisper-1`
 - `gpt-4o-mini-transcribe`
 - `gpt-4o-transcribe`
+- `gemini-2.5-flash`
+- `gemini-2.5-pro`
+- `gemini-3.8-flash`
 
-Default chain: `whisper-1` → `gpt-4o-mini-transcribe` → `gpt-4o-transcribe`
+Default chain: `gemini-2.5-flash` → `gpt-4o-transcribe` → `gpt-4o-mini-transcribe`. The chain is limited to three models; `whisper-1` and the other Gemini models remain selectable.
+
+Gemini audio uses UstaGPT's native `/v1beta/models/{model}:generateContent` endpoint with `inlineData`, using the same UstaGPT key. In live multilingual controls, this route transcribed the expected words, while the chat `input_audio` route returned unrelated text. The transcription endpoint returned provider errors during those controls. See the [comparison and GitHub research](docs/transcription-research.md).
 
 When a model fails with a retryable error (timeout, 429, 5xx), the worker waits 30 seconds and tries the next model. Authentication errors (401, 403) stop the chain immediately.
+
+### Transcription quality
+
+- Telegram audio is decoded to mono 16 kHz PCM WAV, avoiding another lossy MP3 encoding step.
+- WebRTC voice activity detection trims non-speech at the edges and internal gaps longer than about two seconds, with 300 ms padding around speech. Short pauses are preserved for language context. This is a small signal-processing filter, not a local transcription model.
+- Uploads are at most 30 seconds and stay within the configured file-size limit. Pauses near chunk boundaries are preferred over cuts through words.
+- Recordings without sufficient detected speech are not sent to the transcription API. The bot reports that speech could not be detected.
+- Empty responses, implausibly long transcripts, and prolonged repetition loops trigger another model. Rejected text is never sent to the chat.
+- Automatic language detection is the default. Set `/language_set tr` for a Turkish-only group, or `/language_set auto` for multilingual recordings. Group model and language choices apply to newly queued jobs.
+- Short transcripts replace the queued status reply. Longer transcripts continue as replies without truncation or duplication of the first part.
+
+`AUDIO_VAD_MODE` controls speech detection (0 is least aggressive, 3 is most aggressive; default 2). `AUDIO_MIN_SPEECH_SECONDS` defaults to 0.15 seconds. Lower the mode if quiet speech is being missed. Voice detection and text heuristics can still miss plausible hallucinations, or mistake noise for speech; compare problem recordings against their transcripts when evaluating quality.
+
+The transcription endpoint receives no prompt. Whisper's prompt is context rather than a reliable instruction to avoid hallucinations. UstaGPT's public transcription parameter list does not document `prompt`, `temperature`, or confidence scores, so the bot does not depend on those undocumented fields. Gemini receives a brief transcription instruction that preserves spoken languages and treats spoken instructions as content. See [UstaGPT's endpoint documentation](https://ustagpt.com.tr/en/docs/api/audio-transcriptions) and [UstaGPT's native Gemini protocol](https://ustagpt.com.tr/en/docs/gemini-cli).
+
+After changing code or `.env`, rebuild the bot and worker:
+
+```bash
+docker compose up --build -d bot worker
+```
+
+Existing server `.env` files are not updated by Git. For the new defaults, set:
+
+```dotenv
+USTAGPT_PRIMARY_MODEL=gemini-2.5-flash
+USTAGPT_FALLBACK_MODELS=gpt-4o-transcribe,gpt-4o-mini-transcribe
+USTAGPT_LANGUAGE=auto
+```
+
+For groups with saved overrides, use `/language_set auto` and `/model_set gemini-2.5-flash` in each group.
 
 ## UstaGPT Setup
 
@@ -183,7 +218,9 @@ cat backup.sql | docker compose exec -T postgres psql -U transcriber transcriber
 │   │   └── session.py        # Session management
 │   ├── services/             # Business logic services
 │   │   ├── authorization.py  # Role-based access control
-│   │   ├── audio_converter.py# FFmpeg OGG→MP3 conversion
+│   │   ├── audio_converter.py# FFmpeg PCM WAV decoding
+│   │   ├── speech_audio.py   # Speech detection and bounded uploads
+│   │   ├── transcript_quality.py # Empty/loop/length rejection
 │   │   ├── telegram_files.py # Telegram file download
 │   │   ├── transcript_delivery.py # Send transcripts to Telegram
 │   │   ├── ustagpt_client.py # UstaGPT API client
@@ -217,7 +254,8 @@ cat backup.sql | docker compose exec -T postgres psql -U transcriber transcriber
 - **Alembic** — migration management
 - **httpx** — HTTP client (UstaGPT API)
 - **Pydantic Settings 2.x** — configuration management
-- **FFmpeg** — audio conversion (OGG → MP3)
+- **FFmpeg** — audio decoding (OGG → PCM WAV)
+- **WebRTC VAD** — speech detection before uploading audio
 - **Structlog** — structured JSON logging
 - **Ruff** — linting and formatting
 - **pytest** — test framework
