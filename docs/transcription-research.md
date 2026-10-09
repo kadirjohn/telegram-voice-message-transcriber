@@ -72,7 +72,7 @@ USTAGPT_LANGUAGE=auto
 Kayıtlı grup tercihleri varsa grup içinde `/model_set gemini-3.8-flash` ve `/language_set auto` kullanın.
 
 ```bash
-make deploy
+sh scripts/deploy.sh
 ```
 
 ## Gemini kullanan botların kaynak incelemesi
@@ -100,4 +100,4 @@ Bu örneklerin incelenen gönderim kodunda ses halüsinasyonunu tamamen engelley
 
 [OpenAI'nin 4o Transcribe model belgesi](https://developers.openai.com/api/docs/models/gpt-4o-transcribe), özgün Whisper'a göre doğruluk iyileşmesi bildirir. Bu, Gemini 3.8 Flash'a karşı bir karşılaştırma değildir ve UstaGPT'deki mevcut sağlayıcı hatasını çözmez. Primary seçimimiz çalıştığı doğrulanan 3.8 Flash'tır; diğerlerinin daha düşük doğrulukta olduğu sonucu çıkarılmadı.
 
-Sunucu kurulumunda yalnızca bot/worker başlatmak yerine `make deploy` kullanılmalı. Bu komut önce PostgreSQL/Redis sağlığını bekler, sonra `.env` içindeki `DATABASE_URL` ile migration çalıştırır ve uygulamayı başlatır. Kodun uzak depoya push edilmesi gerekir; yerel commit tek başına sunucudaki `git pull` ile alınamaz.
+Sunucu kurulumunda `sh scripts/deploy.sh` kullanılmalı; sunucuda `make` kurulması gerekmez. Bu komut önce PostgreSQL/Redis sağlığını bekler, sonra `.env` içindeki `DATABASE_URL` ile migration çalıştırır ve uygulamayı başlatır. Kodun uzak depoya push edilmesi gerekir; yerel commit tek başına sunucudaki `git pull` ile alınamaz. Sunucudaki yerel commitler nedeniyle fast-forward mümkün değilse README'deki yedek dal ve birleştirme adımları kullanılmalı; çatışma çözülmeden deploy yapılmamalı.

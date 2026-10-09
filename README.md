@@ -41,10 +41,10 @@ cp .env.example .env
 # Edit .env: set TELEGRAM_BOT_TOKEN, USTAGPT_API_KEY, OWNER_TELEGRAM_ID
 
 # 3. Build, start the database/queue, migrate, and start the bot/worker
-make deploy
+sh scripts/deploy.sh
 
 # 4. Follow the logs
-make logs
+docker compose logs -f bot worker
 ```
 
 ## BotFather Setup
@@ -136,7 +136,7 @@ The transcription endpoint receives no prompt. Whisper's prompt is context rathe
 After changing code or `.env`, rebuild the bot and worker:
 
 ```bash
-make deploy
+sh scripts/deploy.sh
 ```
 
 Existing server `.env` files are not updated by Git. For the new defaults, set:
@@ -159,22 +159,22 @@ For groups with saved overrides, use `/language_set auto` and `/model_set gemini
 
 ```bash
 # Build and deploy (safe for first start and subsequent updates)
-make deploy
+sh scripts/deploy.sh
 
 # View logs
-make logs
+docker compose logs -f bot worker
 
 # Run database migrations
-make migrate
+docker compose run --rm --no-deps bot alembic upgrade head
 
 # Scale workers (e.g., 3 workers)
-make worker-scale count=3
+docker compose up -d --scale worker=3
 
 # Enable RQ Dashboard (monitoring profile)
-make dashboard
+docker compose --profile monitoring up -d rq-dashboard
 ```
 
-`make deploy` builds the bot and worker, waits for PostgreSQL and Redis to become healthy, runs database migrations in a temporary container, and starts the application. A failed build, health check, or migration stops deployment. Migrations use `DATABASE_URL` from the same environment settings as the bot.
+`sh scripts/deploy.sh` builds the bot and worker, waits for PostgreSQL and Redis to become healthy, runs database migrations in a temporary container, and starts the application. A failed build, health check, or migration stops deployment. Migrations use `DATABASE_URL` from the same environment settings as the bot. The script requires no `make` installation; `make deploy` remains an alias when `make` is available.
 
 Equivalent commands, from the project directory:
 
@@ -185,6 +185,22 @@ docker compose run --rm --no-deps bot alembic upgrade head
 docker compose up -d bot worker
 docker compose ps
 ```
+
+Run the commands above in order, stopping if any command fails. The deployment script does this automatically.
+
+### Updating a server checkout with local commits
+
+If `git pull --ff-only origin main` reports `Not possible to fast-forward`, the server checkout and `origin/main` have diverged. Preserve the server's commits in a backup branch and merge the remote changes:
+
+```bash
+git branch "codex/server-backup-$(date +%Y%m%d-%H%M%S)" &&
+git fetch origin main &&
+git merge --ff --autostash --no-edit origin/main &&
+test -z "$(git ls-files --unmerged)" &&
+sh scripts/deploy.sh
+```
+
+The commands preserve local commits and temporarily stash tracked edits during the merge. Ignored `.env` settings remain on the server. A merge conflict, including a conflict when restoring stashed edits, stops deployment; inspect `git status` and resolve the conflict before running the script. Untracked files that would be overwritten also stop the merge.
 
 ### Service URLs (localhost only)
 

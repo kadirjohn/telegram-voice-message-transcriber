@@ -6,11 +6,7 @@ up:
 	docker compose up --build -d
 
 deploy:
-	docker compose build bot worker
-	docker compose up -d --wait --wait-timeout 120 postgres redis
-	docker compose run --rm --no-deps bot alembic upgrade head
-	docker compose up -d bot worker
-	docker compose ps
+	sh scripts/deploy.sh
 
 down:
 	docker compose down
