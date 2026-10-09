@@ -14,6 +14,11 @@ def test_unknown_duration_uses_configured_limit(settings: Settings) -> None:
     assert transcription_job_timeout(None) == transcription_job_timeout(180)
 
 
+def test_default_timeout_allows_all_four_models() -> None:
+    assert transcription_job_timeout(60) == transcription_job_timeout(60, model_count=4)
+    assert transcription_job_timeout(60) > transcription_job_timeout(60, model_count=3)
+
+
 def test_smaller_upload_limit_allows_time_for_extra_chunks(settings: Settings) -> None:
     normal = transcription_job_timeout(60)
     settings.MAX_VOICE_FILE_BYTES = 160_044

@@ -29,12 +29,34 @@ class TestResolveModelChain:
         )
         assert chain == ["whisper-1", "gpt-4o-mini-transcribe"]
 
-    def test_caps_at_three(self) -> None:
+    def test_caps_at_four(self) -> None:
         chain = resolve_model_chain(
-            "whisper-1",
-            ["gpt-4o-mini-transcribe", "gpt-4o-transcribe", "extra-model"],
+            "gemini-3.8-flash",
+            [
+                "gpt-4o-transcribe",
+                "gpt-4o-mini-transcribe",
+                "whisper-1",
+                "gemini-2.5-flash",
+                "gemini-2.5-pro",
+            ],
         )
-        assert len(chain) <= 3
+        assert chain == [
+            "gemini-3.8-flash",
+            "gpt-4o-transcribe",
+            "gpt-4o-mini-transcribe",
+            "whisper-1",
+        ]
+
+    def test_preserves_whisper_first_server_fallback_order(self) -> None:
+        assert resolve_model_chain(
+            "gemini-3.8-flash",
+            ["whisper-1", "gpt-4o-mini-transcribe", "gpt-4o-transcribe"],
+        ) == [
+            "gemini-3.8-flash",
+            "whisper-1",
+            "gpt-4o-mini-transcribe",
+            "gpt-4o-transcribe",
+        ]
 
     def test_empty_fallbacks(self) -> None:
         chain = resolve_model_chain("whisper-1", [])

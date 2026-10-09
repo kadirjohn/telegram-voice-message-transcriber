@@ -55,7 +55,7 @@ Tek sentetik kayıttan genel doğruluk sıralaması veya VAD'nin kelime hatasın
 - MP3'e tekrar sıkıştırmak yerine mono 16 kHz PCM WAV hazırlanıyor; uzun kayıtlar sınırlı parçalara ayrılıyor.
 - Boş, aşırı uzun veya uzun tekrar döngüsü içeren çıktı kullanıcıya gösterilmeden sonraki model deneniyor.
 - Dil algılama otomatik kalıyor; grup ayarları yeni işlere aktarılıyor.
-- Gemini native ses desteği eklendi. Kullanıcının tercihi ve sonraki gerçek kayıt testleriyle varsayılan `gemini-3.8-flash` olarak güncellendi; yedekler `gpt-4o-transcribe,gpt-4o-mini-transcribe`. Bu seçim UstaGPT üzerinden çalıştığı doğrulanan seçeneği kullanır, doğruluk üstünlüğü iddiası değildir.
+- Gemini native ses desteği eklendi. Kullanıcının tercihi ve sonraki gerçek kayıt testleriyle varsayılan `gemini-3.8-flash` olarak güncellendi; yedekler `gpt-4o-transcribe,gpt-4o-mini-transcribe,whisper-1`. Dört modelin de denenebilmesi için zincir sınırı dörde çıkarıldı; `.env` içindeki yedek sırası korunur. Bu seçim UstaGPT üzerinden çalıştığı doğrulanan seçeneği kullanır, doğruluk üstünlüğü iddiası değildir.
 - Zamanlanmış yeniden denemeler sonraki modelden devam ediyor; uzun sonuçlar kesilmeden Telegram'a aktarılıyor.
 - Kuyrukta işin süresi kayıt uzunluğuna ve parça sayısına göre hesaplanıyor; uzun kayıtların çoklu API çağrıları eski sabit süre sınırına takılmıyor.
 
@@ -65,7 +65,7 @@ Mevcut `.env` Git tarafından güncellenmez. Kod sunucuya aktarıldıktan sonra 
 
 ```dotenv
 USTAGPT_PRIMARY_MODEL=gemini-3.8-flash
-USTAGPT_FALLBACK_MODELS=gpt-4o-transcribe,gpt-4o-mini-transcribe
+USTAGPT_FALLBACK_MODELS=gpt-4o-transcribe,gpt-4o-mini-transcribe,whisper-1
 USTAGPT_LANGUAGE=auto
 ```
 

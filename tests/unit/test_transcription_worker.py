@@ -14,6 +14,7 @@ from app.services.exceptions import (
     TelegramDeliveryError,
     UstaGPTTemporaryError,
 )
+from app.services.model_chain import default_model_chain
 from app.services.speech_audio import AudioChunk
 from app.workers import tasks
 
@@ -104,6 +105,26 @@ def test_never_delivers_rejected_output_when_all_models_fail(
     assert ctx.client.transcribe.call_count == 3
     assert ctx.job.status == JobStatus.FAILED
     ctx.delivery.deliver_transcript.assert_not_called()
+
+
+def test_whisper_is_tried_after_three_rejected_models(
+    worker_context: SimpleNamespace,
+) -> None:
+    ctx = worker_context
+    ctx.job.model_chain = default_model_chain()
+    ctx.client.transcribe.side_effect = ["teşekkür ederim " * 30] * 3 + ["Hello world."]
+    tasks.process_transcription_job(str(ctx.job.id))
+    assert [call.kwargs["model"] for call in ctx.client.transcribe.call_args_list] == [
+        "gemini-3.8-flash",
+        "gpt-4o-transcribe",
+        "gpt-4o-mini-transcribe",
+        "whisper-1",
+    ]
+    assert ctx.delivery.deliver_transcript.call_args.kwargs["model"] == "whisper-1"
+    assert (
+        ctx.delivery.deliver_transcript.call_args.kwargs["transcript"] == "Hello world."
+    )
+    assert ctx.job.status == JobStatus.SUCCEEDED
 
 
 def test_temporary_error_schedules_next_model_with_timedelta(

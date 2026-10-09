@@ -27,7 +27,7 @@ def resolve_model_chain(
     """Resolve a deduplicated model chain from primary + fallbacks.
 
     Validates against SUPPORTED_MODELS, removes duplicates while preserving
-    order, and caps at 3 models.
+    order, and caps at 4 models.
     """
     ordered = [primary, *fallbacks]
     result: list[str] = []
@@ -38,7 +38,7 @@ def resolve_model_chain(
         if model not in result:
             result.append(model)
 
-    return result[:3]
+    return result[:4]
 
 
 def default_model_chain() -> list[str]:

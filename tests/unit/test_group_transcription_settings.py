@@ -17,6 +17,7 @@ def test_default_chain_uses_native_gemini_then_transcription_models() -> None:
         "gemini-3.8-flash",
         "gpt-4o-transcribe",
         "gpt-4o-mini-transcribe",
+        "whisper-1",
     ]
 
 

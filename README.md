@@ -113,7 +113,7 @@ Supported models (through UstaGPT):
 - `gemini-2.5-pro`
 - `gemini-3.8-flash`
 
-Default chain: `gemini-3.8-flash` → `gpt-4o-transcribe` → `gpt-4o-mini-transcribe`. The chain is limited to three models; `whisper-1` and the other Gemini models remain selectable.
+Default chain: `gemini-3.8-flash` → `gpt-4o-transcribe` → `gpt-4o-mini-transcribe` → `whisper-1`. The chain supports up to four models and preserves the configured fallback order; the other Gemini models remain selectable.
 
 Gemini audio uses UstaGPT's native `/v1beta/models/{model}:generateContent` endpoint with `inlineData`, using the same UstaGPT key. In live multilingual controls, this route transcribed the expected words, while the chat `input_audio` route returned unrelated text. Gemini 3.8 Flash also returned transcripts for the two real recordings, while the transcription endpoint returned provider errors. Those recordings had no reference transcripts, so this establishes availability, not an accuracy ranking. See the [comparison and GitHub research](docs/transcription-research.md).
 
@@ -143,7 +143,7 @@ Existing server `.env` files are not updated by Git. For the new defaults, set:
 
 ```dotenv
 USTAGPT_PRIMARY_MODEL=gemini-3.8-flash
-USTAGPT_FALLBACK_MODELS=gpt-4o-transcribe,gpt-4o-mini-transcribe
+USTAGPT_FALLBACK_MODELS=gpt-4o-transcribe,gpt-4o-mini-transcribe,whisper-1
 USTAGPT_LANGUAGE=auto
 ```
 

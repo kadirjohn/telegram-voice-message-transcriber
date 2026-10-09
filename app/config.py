@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     USTAGPT_API_KEY: str = Field(min_length=1)
     USTAGPT_PRIMARY_MODEL: str = Field(default="gemini-3.8-flash", min_length=1)
     USTAGPT_FALLBACK_MODELS: str = Field(
-        default="gpt-4o-transcribe,gpt-4o-mini-transcribe",
+        default="gpt-4o-transcribe,gpt-4o-mini-transcribe,whisper-1",
         min_length=1,
     )
     USTAGPT_LANGUAGE: str = Field(default="auto", min_length=1)
@@ -77,7 +77,7 @@ class Settings(BaseSettings):
     @classmethod
     def _validate_fallback_models(cls, v: str) -> str:
         if not v.strip():
-            return "gpt-4o-transcribe,gpt-4o-mini-transcribe"
+            return "gpt-4o-transcribe,gpt-4o-mini-transcribe,whisper-1"
         return v
 
     def model_post_init(self, __context: object) -> None:

@@ -77,7 +77,7 @@ async def cmd_job_retry(message: Message, command: CommandObject) -> None:
         "app.workers.tasks.process_transcription_job",
         str(job.id),
         job_timeout=transcription_job_timeout(
-            job.duration_seconds, model_count=len(job.model_chain or []) or 3
+            job.duration_seconds, model_count=len(job.model_chain or []) or 4
         ),
         result_ttl=0,
     )

@@ -9,7 +9,7 @@ from app.config import get_settings
 
 
 def transcription_job_timeout(
-    duration_seconds: int | None, *, model_count: int = 3
+    duration_seconds: int | None, *, model_count: int = 4
 ) -> int:
     """Allow time for bounded uploads instead of timing out long recordings."""
     settings = get_settings()
