@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     # ── UstaGPT ──────────────────────────────────────────────────────────
     USTAGPT_BASE_URL: str = Field(default="https://api.ustagpt.com.tr", min_length=1)
     USTAGPT_API_KEY: str = Field(min_length=1)
-    USTAGPT_PRIMARY_MODEL: str = Field(default="gemini-2.5-flash", min_length=1)
+    USTAGPT_PRIMARY_MODEL: str = Field(default="gemini-3.8-flash", min_length=1)
     USTAGPT_FALLBACK_MODELS: str = Field(
         default="gpt-4o-transcribe,gpt-4o-mini-transcribe",
         min_length=1,

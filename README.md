@@ -40,8 +40,8 @@ cd telegram-voice-message-transcriber
 cp .env.example .env
 # Edit .env: set TELEGRAM_BOT_TOKEN, USTAGPT_API_KEY, OWNER_TELEGRAM_ID
 
-# 3. Start the stack
-make up
+# 3. Build, start the database/queue, migrate, and start the bot/worker
+make deploy
 
 # 4. Follow the logs
 make logs
@@ -113,9 +113,9 @@ Supported models (through UstaGPT):
 - `gemini-2.5-pro`
 - `gemini-3.8-flash`
 
-Default chain: `gemini-2.5-flash` → `gpt-4o-transcribe` → `gpt-4o-mini-transcribe`. The chain is limited to three models; `whisper-1` and the other Gemini models remain selectable.
+Default chain: `gemini-3.8-flash` → `gpt-4o-transcribe` → `gpt-4o-mini-transcribe`. The chain is limited to three models; `whisper-1` and the other Gemini models remain selectable.
 
-Gemini audio uses UstaGPT's native `/v1beta/models/{model}:generateContent` endpoint with `inlineData`, using the same UstaGPT key. In live multilingual controls, this route transcribed the expected words, while the chat `input_audio` route returned unrelated text. The transcription endpoint returned provider errors during those controls. See the [comparison and GitHub research](docs/transcription-research.md).
+Gemini audio uses UstaGPT's native `/v1beta/models/{model}:generateContent` endpoint with `inlineData`, using the same UstaGPT key. In live multilingual controls, this route transcribed the expected words, while the chat `input_audio` route returned unrelated text. Gemini 3.8 Flash also returned transcripts for the two real recordings, while the transcription endpoint returned provider errors. Those recordings had no reference transcripts, so this establishes availability, not an accuracy ranking. See the [comparison and GitHub research](docs/transcription-research.md).
 
 When a model fails with a retryable error (timeout, 429, 5xx), the worker waits 30 seconds and tries the next model. Authentication errors (401, 403) stop the chain immediately.
 
@@ -136,18 +136,18 @@ The transcription endpoint receives no prompt. Whisper's prompt is context rathe
 After changing code or `.env`, rebuild the bot and worker:
 
 ```bash
-docker compose up --build -d bot worker
+make deploy
 ```
 
 Existing server `.env` files are not updated by Git. For the new defaults, set:
 
 ```dotenv
-USTAGPT_PRIMARY_MODEL=gemini-2.5-flash
+USTAGPT_PRIMARY_MODEL=gemini-3.8-flash
 USTAGPT_FALLBACK_MODELS=gpt-4o-transcribe,gpt-4o-mini-transcribe
 USTAGPT_LANGUAGE=auto
 ```
 
-For groups with saved overrides, use `/language_set auto` and `/model_set gemini-2.5-flash` in each group.
+For groups with saved overrides, use `/language_set auto` and `/model_set gemini-3.8-flash` in each group.
 
 ## UstaGPT Setup
 
@@ -158,8 +158,8 @@ For groups with saved overrides, use `/language_set auto` and `/model_set gemini
 ## Docker Deployment
 
 ```bash
-# Start all services
-make up
+# Build and deploy (safe for first start and subsequent updates)
+make deploy
 
 # View logs
 make logs
@@ -172,6 +172,18 @@ make worker-scale count=3
 
 # Enable RQ Dashboard (monitoring profile)
 make dashboard
+```
+
+`make deploy` builds the bot and worker, waits for PostgreSQL and Redis to become healthy, runs database migrations in a temporary container, and starts the application. A failed build, health check, or migration stops deployment. Migrations use `DATABASE_URL` from the same environment settings as the bot.
+
+Equivalent commands, from the project directory:
+
+```bash
+docker compose build bot worker
+docker compose up -d --wait --wait-timeout 120 postgres redis
+docker compose run --rm --no-deps bot alembic upgrade head
+docker compose up -d bot worker
+docker compose ps
 ```
 
 ### Service URLs (localhost only)

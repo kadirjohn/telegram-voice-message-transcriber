@@ -3,6 +3,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from app.config import get_settings
 from app.db.base import Base
 from app.db.models import (  # noqa: F401
     Group,
@@ -12,6 +13,8 @@ from app.db.models import (  # noqa: F401
 )
 
 config = context.config
+# Use the same database as the bot. Escape ConfigParser's interpolation syntax.
+config.set_main_option("sqlalchemy.url", get_settings().DATABASE_URL.replace("%", "%%"))
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 

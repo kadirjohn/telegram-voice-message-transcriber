@@ -14,7 +14,7 @@ from app.services.model_chain import group_model_chain
 
 def test_default_chain_uses_native_gemini_then_transcription_models() -> None:
     assert group_model_chain(None) == [
-        "gemini-2.5-flash",
+        "gemini-3.8-flash",
         "gpt-4o-transcribe",
         "gpt-4o-mini-transcribe",
     ]

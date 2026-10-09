@@ -20,7 +20,7 @@ Canlı kontrol ayrıca UstaGPT'nin iki Gemini istek yolu arasında önemli bir f
 
 ## Canlı model kontrolü
 
-Kullanıcının iki örnek M4A eki ilk incelemede 3,05 ve 35,2 saniye olarak okunmuştu. Model karşılaştırmasına geçildiğinde Voice Memos'un geçici dosya yolları artık okunamıyordu. **Bu iki gerçek kayıt için transkripsiyon sonucu elde edilmedi.** Tekrar eklenmeleri gerekiyor.
+İlk turdaki iki M4A eki model karşılaştırmasına geçildiğinde Voice Memos'un geçici dosya yollarından artık okunamıyordu. Bu nedenle ilk karşılaştırma aşağıdaki sentetik kayda aittir. Yeniden eklenen iki gerçek kaydın sonraki testi aşağıda ayrıca belirtilmiştir.
 
 Bunun yerine bilinen içerikli, cihazda üretilen 13,66 saniyelik bir kontrol kaydı kullanıldı:
 
@@ -55,7 +55,7 @@ Tek sentetik kayıttan genel doğruluk sıralaması veya VAD'nin kelime hatasın
 - MP3'e tekrar sıkıştırmak yerine mono 16 kHz PCM WAV hazırlanıyor; uzun kayıtlar sınırlı parçalara ayrılıyor.
 - Boş, aşırı uzun veya uzun tekrar döngüsü içeren çıktı kullanıcıya gösterilmeden sonraki model deneniyor.
 - Dil algılama otomatik kalıyor; grup ayarları yeni işlere aktarılıyor.
-- Gemini native ses desteği ve üç Gemini model seçeneği eklendi. Varsayılan `gemini-2.5-flash`; yedekler `gpt-4o-transcribe,gpt-4o-mini-transcribe`. Bu seçim kontrol sırasında çalışan daha düşük maliyetli Gemini seçeneğini kullanır, doğruluk üstünlüğü iddiası değildir.
+- Gemini native ses desteği eklendi. Kullanıcının tercihi ve sonraki gerçek kayıt testleriyle varsayılan `gemini-3.8-flash` olarak güncellendi; yedekler `gpt-4o-transcribe,gpt-4o-mini-transcribe`. Bu seçim UstaGPT üzerinden çalıştığı doğrulanan seçeneği kullanır, doğruluk üstünlüğü iddiası değildir.
 - Zamanlanmış yeniden denemeler sonraki modelden devam ediyor; uzun sonuçlar kesilmeden Telegram'a aktarılıyor.
 - Kuyrukta işin süresi kayıt uzunluğuna ve parça sayısına göre hesaplanıyor; uzun kayıtların çoklu API çağrıları eski sabit süre sınırına takılmıyor.
 
@@ -64,13 +64,40 @@ Tek sentetik kayıttan genel doğruluk sıralaması veya VAD'nin kelime hatasın
 Mevcut `.env` Git tarafından güncellenmez. Kod sunucuya aktarıldıktan sonra şu alanları ayarlayın:
 
 ```dotenv
-USTAGPT_PRIMARY_MODEL=gemini-2.5-flash
+USTAGPT_PRIMARY_MODEL=gemini-3.8-flash
 USTAGPT_FALLBACK_MODELS=gpt-4o-transcribe,gpt-4o-mini-transcribe
 USTAGPT_LANGUAGE=auto
 ```
 
-Kayıtlı grup tercihleri varsa grup içinde `/model_set gemini-2.5-flash` ve `/language_set auto` kullanın. Daha güçlü Gemini seçeneklerini denemek için `/model_set gemini-2.5-pro` veya `/model_set gemini-3.8-flash` kullanılabilir.
+Kayıtlı grup tercihleri varsa grup içinde `/model_set gemini-3.8-flash` ve `/language_set auto` kullanın.
 
 ```bash
-docker compose up --build -d bot worker
+make deploy
 ```
+
+## Gemini kullanan botların kaynak incelemesi
+
+İlk araştırma Whisper tabanlı örneklere ağırlık vermişti. Sonraki turda Gemini kullanan şu projelerin ses gönderen kodu ayrıca incelendi:
+
+| Proje | Kaynakta görülen yöntem | Bizim kullanımımız için anlamı |
+| --- | --- | --- |
+| [ket0x4/gemini-speech2text-telegram](https://github.com/ket0x4/gemini-speech2text-telegram/blob/master/src/services/gemini.ts) | 20 MB altındaki sesi Base64 ve MIME türüyle doğrudan gönderir; büyük dosyayı Files API'ye yükleyip işlem sonunda siler. Google Interactions ve özel `gemini-3.5-transcribe` kullanır. Dil ipuçları isteğe bağlıdır. | Gerçek ses içeriği ile dosya türü birlikte aktarılmalı. Google'a özgü ayrı dosya yükleme/transkripsiyon yolunu UstaGPT'ye destek doğrulamadan taşımamak gerekir. |
+| [Hormold/voiceoverbot](https://github.com/Hormold/voiceoverbot/blob/main/src/modules/aiService.ts) | Google sağlayıcısına gerçek ses Buffer'ını `file` parçası olarak verir. Dil koruyan sistem talimatı ve Zod şemalı `outputTranscription` aracıyla sonuç çıkarır. Ayrıca dolgu sözcüklerini temizler ve özet üretir. | Yapısal çıktı kontrolü yanıt biçimini denetler; metnin sesle aynı olduğunun kanıtı değildir. Dolgu temizleme/özetleme bizim birebir transkripsiyon amacımıza eklenmedi. |
+| [winniesi/tg-gemini-bot](https://github.com/winniesi/tg-gemini-bot/blob/main/api/gemini.py) | Google SDK'sında `Part.from_bytes` ile dosya içeriğini ve MIME türünü `generate_content` çağrısına ekler. Geçici hatalarda sınırlı yeniden deneme kullanır. Medya isteği sohbet geçmişinden ayrı bir çağrıdır. | Kısa, ayrı bir transkripsiyon talimatı ve gerçek dosya parçası kullanılmalı; sohbet geçmişi transkripsiyona karıştırılmamalı. |
+
+Bu örneklerin incelenen gönderim kodunda ses halüsinasyonunu tamamen engelleyen ortak bir denetim yok. Bizim VAD ve tekrar/uzunluk denetimimiz ek korumadır; Gemini için doğru native ses protokolünün yerini tutmaz. [Google'ın ses belgeleri](https://ai.google.dev/gemini-api/docs/audio) de sesin dosya/inline içerik olarak aktarılmasını gösterir.
+
+## Yeniden eklenen gerçek kayıtların UstaGPT testi
+
+9 Ekim 2026'da ekler önce proje dışındaki çalışma klasörüne kopyalandı. Ses dosyaları ve tam transkripsiyonlar Git'e eklenmedi. Otomatik dil algılama korunarak her deneyde modeller sırayla çağrıldı.
+
+| Girdi | Gemini 3.8 Flash, tam WAV | Gemini 3.8 Flash, bot hazırlığı | Gemini 3.8 Flash, orijinal M4A |
+| --- | --- | --- | --- |
+| 35,2 saniyelik ilk kayıt | Türkçe ve İngilizce metin; 40,89 sn | 29,73 + 5,20 saniyelik iki parça; metin büyük ölçüde aynı; 10,58 sn | Metin büyük ölçüde aynı; 16,03 sn |
+| 24,128 saniyelik ikinci kayıt | Almanca metin; 90,75 sn | 24,128 saniyelik tek parça; bazı sözcük ayrımları farklı; 72,96 sn | Almanca metin; bazı ifadeler farklı; 8,31 sn |
+
+`gpt-4o-transcribe`, `gpt-4o-mini-transcribe` ve `whisper-1`, her iki tam WAV kaydında HTTP 503 / `all_providers_failed` döndürdü. Bu nedenle modeller arasında kelime doğruluğu ölçülemedi. Referans metin de yok; özellikle Almanca çıktılardaki farklı/belirsiz ifadeler doğrulanmış konuşma gibi değerlendirilmemeli. Orijinal M4A'nın daha kısa yanıt süresi tek deney gözlemidir; dosya biçimi dışında sağlayıcı yükü ve model değişkenliği de süreyi etkileyebilir.
+
+[OpenAI'nin 4o Transcribe model belgesi](https://developers.openai.com/api/docs/models/gpt-4o-transcribe), özgün Whisper'a göre doğruluk iyileşmesi bildirir. Bu, Gemini 3.8 Flash'a karşı bir karşılaştırma değildir ve UstaGPT'deki mevcut sağlayıcı hatasını çözmez. Primary seçimimiz çalıştığı doğrulanan 3.8 Flash'tır; diğerlerinin daha düşük doğrulukta olduğu sonucu çıkarılmadı.
+
+Sunucu kurulumunda yalnızca bot/worker başlatmak yerine `make deploy` kullanılmalı. Bu komut önce PostgreSQL/Redis sağlığını bekler, sonra `.env` içindeki `DATABASE_URL` ile migration çalıştırır ve uygulamayı başlatır. Kodun uzak depoya push edilmesi gerekir; yerel commit tek başına sunucudaki `git pull` ile alınamaz.
