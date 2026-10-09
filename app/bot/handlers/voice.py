@@ -3,13 +3,15 @@ from __future__ import annotations
 from aiogram import Router
 from aiogram.types import Message, Voice
 
-from app.config import get_settings
+from app.config import Settings, get_settings
+from app.db.enums import GroupStatus
+from app.db.models.group import Group
 from app.db.repositories.group_repository import GroupRepository
 from app.db.repositories.job_repository import JobRepository
 from app.logging import get_logger
-from app.queue import create_queue
+from app.queue import create_queue, transcription_job_timeout
 from app.services.authorization import AuthorizationService
-from app.services.model_chain import default_model_chain
+from app.services.model_chain import group_model_chain
 
 router = Router(name="voice")
 logger = get_logger(__name__)
@@ -38,14 +40,17 @@ async def on_voice_message(message: Message) -> None:
         return
 
     group_repo = GroupRepository()
-    if not group_repo.is_approved(chat.id):
+    group = group_repo.get_by_chat_id(chat.id)
+    if group is None or group.status != GroupStatus.APPROVED or not group.is_enabled:
         logger.debug("voice_skipped_group_not_approved", chat_id=chat.id)
         return
 
-    await _process_voice(message, chat.id, settings)
+    await _process_voice(message, chat.id, settings, group)
 
 
-async def _process_voice(message: Message, chat_id: int, settings) -> None:
+async def _process_voice(
+    message: Message, chat_id: int, settings: Settings, group: Group | None = None
+) -> None:
     """Validate, create job, and enqueue for transcription."""
     voice: Voice | None = message.voice
     if voice is None:
@@ -53,17 +58,13 @@ async def _process_voice(message: Message, chat_id: int, settings) -> None:
 
     max_dur = settings.MAX_VOICE_DURATION_SECONDS
     if voice.duration is not None and voice.duration > max_dur:
-        await message.reply(
-            f"⏱ Sesli mesaj çok uzun. Maksimum {max_dur} saniye."
-        )
+        await message.reply(f"⏱ Sesli mesaj çok uzun. Maksimum {max_dur} saniye.")
         return
 
     max_size = settings.MAX_VOICE_FILE_BYTES
     if voice.file_size is not None and voice.file_size > max_size:
         max_mb = max_size // 1024 // 1024
-        await message.reply(
-            f"📦 Sesli mesaj çok büyük. Maksimum {max_mb} MB."
-        )
+        await message.reply(f"📦 Sesli mesaj çok büyük. Maksimum {max_mb} MB.")
         return
 
     # Check for duplicate
@@ -79,7 +80,7 @@ async def _process_voice(message: Message, chat_id: int, settings) -> None:
         return
 
     # Create job
-    model_chain = default_model_chain()
+    model_chain = group_model_chain(group)
     job = job_repo.create(
         chat_id=chat_id,
         source_message_id=message.message_id,
@@ -90,7 +91,9 @@ async def _process_voice(message: Message, chat_id: int, settings) -> None:
         duration_seconds=voice.duration,
         file_size=voice.file_size,
         mime_type=voice.mime_type,
-        language=settings.USTAGPT_LANGUAGE,
+        language=group.language
+        if group and group.language
+        else settings.USTAGPT_LANGUAGE,
         model_chain=model_chain,
     )
 
@@ -103,7 +106,9 @@ async def _process_voice(message: Message, chat_id: int, settings) -> None:
     queue.enqueue(
         "app.workers.tasks.process_transcription_job",
         str(job.id),
-        job_timeout=600,
+        job_timeout=transcription_job_timeout(
+            voice.duration, model_count=len(model_chain)
+        ),
         result_ttl=0,
     )
 

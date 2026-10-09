@@ -27,9 +27,7 @@ async def cmd_approve_here(message: Message) -> None:
         group = group_repo.upsert(chat.id, title=chat.title, username=chat.username)
         group_repo.approve(chat.id, message.from_user.id)
 
-    await message.answer(
-        "✅ Bu grup onaylandı. Artık sesli mesajlar çevrilecek."
-    )
+    await message.answer("✅ Bu grup onaylandı. Artık sesli mesajlar çevrilecek.")
 
 
 @router.message(Command("revoke_here"), RoleFilter.admin())
@@ -86,10 +84,7 @@ async def cmd_pending_groups(message: Message) -> None:
     if not pending:
         await message.answer("Bekleyen grup yok.")
         return
-    lines = [
-        f"• `{g.chat_id}` — {g.title or '(isimsiz)'}"
-        for g in pending
-    ]
+    lines = [f"• `{g.chat_id}` — {g.title or '(isimsiz)'}" for g in pending]
     await message.answer("⏳ **Bekleyen Gruplar:**\n\n" + "\n".join(lines))
 
 
@@ -99,9 +94,11 @@ async def cmd_groups(message: Message) -> None:
     from app.db.repositories.group_repository import GroupRepository
 
     repo = GroupRepository()
-    all_groups = repo.get_all_by_status(GroupStatus.APPROVED) + \
-                 repo.get_all_by_status(GroupStatus.PENDING) + \
-                 repo.get_all_by_status(GroupStatus.REVOKED)
+    all_groups = (
+        repo.get_all_by_status(GroupStatus.APPROVED)
+        + repo.get_all_by_status(GroupStatus.PENDING)
+        + repo.get_all_by_status(GroupStatus.REVOKED)
+    )
 
     if not all_groups:
         await message.answer("Hiç grup yok.")

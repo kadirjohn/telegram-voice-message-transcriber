@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from app.services.model_chain import (
-    CHAT_AUDIO_MODELS,
+    GEMINI_MODELS,
     SUPPORTED_MODELS,
     TRANSCRIPTION_ENDPOINT_MODELS,
     default_model_chain,
     resolve_model_chain,
-    uses_chat_endpoint,
 )
 
 
@@ -36,30 +35,34 @@ class TestResolveModelChain:
         )
         assert chain == ["whisper-1", "gpt-4o-mini-transcribe"]
 
-    def test_caps_chain_length(self) -> None:
+    def test_caps_at_four(self) -> None:
         chain = resolve_model_chain(
-            "whisper-1",
+            "gemini-3.8-flash",
             [
-                "gemini-3-flash-preview",
-                "gpt-4o-mini-transcribe",
                 "gpt-4o-transcribe",
-                "extra-model",
+                "gpt-4o-mini-transcribe",
+                "whisper-1",
+                "gemini-2.5-flash",
+                "gemini-2.5-pro",
             ],
         )
-        assert len(chain) <= 4
-
-    def test_whisper_first_then_gemini(self) -> None:
-        chain = resolve_model_chain(
+        assert chain == [
+            "gemini-3.8-flash",
+            "gpt-4o-transcribe",
+            "gpt-4o-mini-transcribe",
             "whisper-1",
-            ["gemini-3.8-flash", "gpt-4o-transcribe"],
-        )
-        assert chain[0] == "whisper-1"
-        assert chain[1] == "gemini-3.8-flash"
+        ]
 
-    def test_default_chain_prefers_gemini_then_whisper(self) -> None:
-        chain = default_model_chain()
-        assert chain[0] == "gemini-3.8-flash"
-        assert "whisper-1" in chain
+    def test_preserves_whisper_first_server_fallback_order(self) -> None:
+        assert resolve_model_chain(
+            "gemini-3.8-flash",
+            ["whisper-1", "gpt-4o-mini-transcribe", "gpt-4o-transcribe"],
+        ) == [
+            "gemini-3.8-flash",
+            "whisper-1",
+            "gpt-4o-mini-transcribe",
+            "gpt-4o-transcribe",
+        ]
 
     def test_empty_fallbacks(self) -> None:
         chain = resolve_model_chain("whisper-1", [])
@@ -73,15 +76,22 @@ class TestResolveModelChain:
         assert "whisper-1" in SUPPORTED_MODELS
         assert "gpt-4o-mini-transcribe" in SUPPORTED_MODELS
         assert "gpt-4o-transcribe" in SUPPORTED_MODELS
-        assert "gemini-3-flash-preview" in SUPPORTED_MODELS
+        assert "gemini-2.5-flash" in SUPPORTED_MODELS
+        assert "gemini-2.5-pro" in SUPPORTED_MODELS
+        assert "gemini-3.8-flash" in SUPPORTED_MODELS
+        assert len(SUPPORTED_MODELS) == 6
+
+    def test_gemini_can_fallback_to_transcription_models(self) -> None:
+        assert resolve_model_chain(
+            "gemini-2.5-flash", ["gpt-4o-transcribe", "gpt-4o-mini-transcribe"]
+        ) == ["gemini-2.5-flash", "gpt-4o-transcribe", "gpt-4o-mini-transcribe"]
 
     def test_every_supported_model_has_a_transport(self) -> None:
         assert SUPPORTED_MODELS
-        assert all(uses_chat_endpoint(m) for m in CHAT_AUDIO_MODELS)
-        assert not any(
-            uses_chat_endpoint(m) for m in TRANSCRIPTION_ENDPOINT_MODELS
-        )
+        assert GEMINI_MODELS.isdisjoint(TRANSCRIPTION_ENDPOINT_MODELS)
+        assert GEMINI_MODELS | TRANSCRIPTION_ENDPOINT_MODELS == SUPPORTED_MODELS
 
-    def test_gemini_is_not_in_transport_set(self) -> None:
-        assert CHAT_AUDIO_MODELS.isdisjoint(TRANSCRIPTION_ENDPOINT_MODELS)
-        assert CHAT_AUDIO_MODELS | TRANSCRIPTION_ENDPOINT_MODELS == SUPPORTED_MODELS
+    def test_default_chain_prefers_gemini_then_whisper(self) -> None:
+        chain = default_model_chain()
+        assert chain[0] == "gemini-3.8-flash"
+        assert "whisper-1" in chain

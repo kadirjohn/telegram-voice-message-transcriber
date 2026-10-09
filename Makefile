@@ -1,9 +1,12 @@
-.PHONY: up down logs ps migrate test lint lint-fix shell clean
+.PHONY: up deploy down logs ps migrate test lint lint-fix shell clean
 
 # ── Docker Compose ───────────────────────────────────────────────────────
 
 up:
 	docker compose up --build -d
+
+deploy:
+	sh scripts/deploy.sh
 
 down:
 	docker compose down
@@ -20,7 +23,7 @@ restart:
 # ── Database ─────────────────────────────────────────────────────────────
 
 migrate:
-	docker compose exec bot alembic upgrade head
+	docker compose run --rm --no-deps bot alembic upgrade head
 
 migrate-new:
 	docker compose exec bot alembic revision --autogenerate -m "$(message)"

@@ -45,10 +45,12 @@ class Settings(BaseSettings):
     USTAGPT_API_KEY: str = Field(min_length=1)
     USTAGPT_PRIMARY_MODEL: str = Field(default="gemini-3.8-flash", min_length=1)
     USTAGPT_FALLBACK_MODELS: str = Field(
-        default="whisper-1,gpt-4o-mini-transcribe,gpt-4o-transcribe",
+        default="gpt-4o-transcribe,gpt-4o-mini-transcribe,whisper-1",
         min_length=1,
     )
-    USTAGPT_LANGUAGE: str = Field(default="tr", min_length=1)
+    # "auto" leaves language detection to the provider. Forcing a language makes
+    # the model translate the recording instead of transcribing it.
+    USTAGPT_LANGUAGE: str = Field(default="auto", min_length=1)
     # UstaGPT's /v1/audio/transcriptions returns HTTP 502 for text, srt and vtt
     # (only json, or omitting the field, succeeds). json is the safe default;
     # _extract_transcript() parses {"text": ...} responses correctly.
@@ -65,6 +67,9 @@ class Settings(BaseSettings):
     MAX_VOICE_FILE_BYTES: int = Field(default=20_971_520, ge=1, le=20_971_520)
     MAX_VOICE_DURATION_SECONDS: int = Field(default=3600, ge=1, le=7200)
     FFMPEG_TIMEOUT_SECONDS: int = Field(default=120, ge=10, le=600)
+    AUDIO_CHUNK_SECONDS: int = Field(default=30, ge=5, le=30)
+    AUDIO_VAD_MODE: int = Field(default=2, ge=0, le=3)
+    AUDIO_MIN_SPEECH_SECONDS: float = Field(default=0.15, gt=0, le=1)
 
     # ── Transcript Storage ───────────────────────────────────────────────
     STORE_TRANSCRIPTS: bool = Field(default=True)
@@ -78,7 +83,7 @@ class Settings(BaseSettings):
     @classmethod
     def _validate_fallback_models(cls, v: str) -> str:
         if not v.strip():
-            return "whisper-1,gpt-4o-mini-transcribe,gpt-4o-transcribe"
+            return "gpt-4o-transcribe,gpt-4o-mini-transcribe,whisper-1"
         return v
 
     def model_post_init(self, __context: object) -> None:

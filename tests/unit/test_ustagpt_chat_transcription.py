@@ -14,9 +14,9 @@ from app.services.exceptions import (
     UstaGPTTemporaryError,
 )
 from app.services.model_chain import (
+    GEMINI_MODELS,
     MAX_CHAT_AUDIO_BASE64_BYTES,
     resolve_model_chain,
-    uses_chat_endpoint,
 )
 from app.services.ustagpt_client import (
     _TRANSCRIBE_PROMPT,
@@ -45,59 +45,44 @@ def audio(tmp_path: Path) -> Path:
     return p
 
 
-def _chat_response(status: int, content: str | None = None) -> MagicMock:
-    r = MagicMock(spec=httpx.Response)
-    r.status_code = status
-    r.text = content or ""
-    r.headers = {"content-type": "application/json"}
+def _gemini_response(status: int, text: str | None = None) -> httpx.Response:
     if status // 100 == 2:
-        r.json.return_value = {
-            "choices": [{"message": {"content": content or ""}}]
-        }
-    else:
-        r.json.return_value = {
-            "error": {"message": "boom", "type": "api_error", "code": "x"}
-        }
-    return r
+        return httpx.Response(
+            status,
+            json={"candidates": [{"content": {"parts": [{"text": text or ""}]}}]},
+        )
+    return httpx.Response(status, json={"error": {"message": "boom"}})
 
 
 class TestTransportSelection:
-    def test_gemini_models_use_chat_endpoint(self) -> None:
-        assert uses_chat_endpoint("gemini-3.8-flash")
-        assert uses_chat_endpoint("gemini-2.5-pro")
-
-    def test_openai_models_use_transcription_endpoint(self) -> None:
-        assert not uses_chat_endpoint("whisper-1")
-        assert not uses_chat_endpoint("gpt-4o-transcribe")
+    def test_gemini_models_are_sent_natively(self) -> None:
+        assert "gemini-3.8-flash" in GEMINI_MODELS
+        assert "gemini-2.5-pro" in GEMINI_MODELS
+        assert not GEMINI_MODELS & {"whisper-1", "gpt-4o-transcribe"}
 
 
-class TestChatTranscription:
+class TestGeminiTranscription:
     @staticmethod
-    def _patched_post(payload: dict | None = None, status: int = 200) -> object:
+    def _patched_post(text: str | None = None, status: int = 200) -> object:
         """Patch httpx.Client.post so the real client is still constructed."""
-        if status // 100 == 2:
-            response = httpx.Response(
-                status,
-                json={"choices": [{"message": {"content": payload or ""}}]},
-            )
-        else:
-            response = httpx.Response(status, json={"error": {"message": "boom"}})
-        return patch.object(httpx.Client, "post", return_value=response)
+        return patch.object(
+            httpx.Client, "post", return_value=_gemini_response(status, text)
+        )
 
-    def test_sends_inline_base64_audio(
+    def test_sends_native_inline_data_audio(
         self, client: UstaGPTClient, audio: Path
     ) -> None:
         with self._patched_post("Merhaba") as mock_post:
             result = client.transcribe(audio_path=audio, model="gemini-3.8-flash")
 
         assert result == "Merhaba"
-        assert mock_post.call_args.args[0].endswith("/v1/chat/completions")
+        assert mock_post.call_args.args[0].endswith(
+            "/v1beta/models/gemini-3.8-flash:generateContent"
+        )
         body = mock_post.call_args.kwargs["json"]
-        part = body["messages"][0]["content"][1]
-        assert part["type"] == "input_audio"
-        assert part["input_audio"]["format"] == "mp3"
-        assert base64.b64decode(part["input_audio"]["data"]) == audio.read_bytes()
-        assert body["temperature"] == 0
+        part = body["contents"][0]["parts"][1]
+        assert part["inlineData"]["mimeType"] == "audio/mpeg"
+        assert base64.b64decode(part["inlineData"]["data"]) == audio.read_bytes()
 
     def test_transcription_endpoint_used_for_whisper(
         self, client: UstaGPTClient, audio: Path
@@ -150,6 +135,28 @@ class TestChatTranscription:
         assert MAX_CHAT_AUDIO_BASE64_BYTES >= 5 * 1024 * 1024
         assert MAX_CHAT_AUDIO_BASE64_BYTES <= 30 * 1024 * 1024
 
+    def test_thought_parts_are_excluded(
+        self, client: UstaGPTClient, audio: Path
+    ) -> None:
+        response = httpx.Response(
+            200,
+            json={
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {"text": "thinking out loud", "thought": True},
+                                {"text": "Merhaba"},
+                            ]
+                        }
+                    }
+                ]
+            },
+        )
+        with patch.object(httpx.Client, "post", return_value=response):
+            result = client.transcribe(audio_path=audio, model="gemini-3.8-flash")
+        assert result == "Merhaba"
+
 
 class TestTranscribePrompt:
     def test_prompt_does_not_force_an_output_language(self) -> None:
@@ -165,8 +172,12 @@ class TestTranscribePrompt:
 
     def test_prompt_asks_for_verbatim_transcript(self) -> None:
         prompt = _TRANSCRIBE_PROMPT.lower()
-        assert "yazıya dök" in prompt
-        assert "çeviri yapma" in prompt
+        assert "transcribe" in prompt
+        assert "do not translate" in prompt
+
+    def test_prompt_guards_against_hallucinated_silence(self) -> None:
+        prompt = _TRANSCRIBE_PROMPT.lower()
+        assert "do not invent words" in prompt
 
 
 class TestCleanTranscript:
@@ -177,7 +188,7 @@ class TestCleanTranscript:
             ("  Merhaba  ", "Merhaba"),
             ('"Merhaba"', "Merhaba"),
             ("“Merhaba”", "Merhaba"),
-            ("Ses kaydının dökümü şu şekildedir:\n\n\"Merhaba\"", "Merhaba"),
+            ('Ses kaydının dökümü şu şekildedir:\n\n"Merhaba"', "Merhaba"),
             ("İşte döküm: Merhaba", "Merhaba"),
             ("çeviri: Merhaba", "Merhaba"),
             ("", ""),
@@ -206,9 +217,7 @@ class TestModelChain:
         assert resolve_model_chain("whisper-1", ["boyle-model-yok"]) == ["whisper-1"]
 
     def test_duplicates_removed(self) -> None:
-        chain = resolve_model_chain(
-            "whisper-1", ["whisper-1", "gemini-3.8-flash"]
-        )
+        chain = resolve_model_chain("whisper-1", ["whisper-1", "gemini-3.8-flash"])
         assert chain.count("whisper-1") == 1
 
     def test_chain_capped(self) -> None:

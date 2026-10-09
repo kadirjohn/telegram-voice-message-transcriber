@@ -28,7 +28,7 @@ class Group(Base):
         DateTime(timezone=True), nullable=True
     )
     primary_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    fallback_models: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    fallback_models: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
     language: Mapped[str | None] = mapped_column(String(10), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

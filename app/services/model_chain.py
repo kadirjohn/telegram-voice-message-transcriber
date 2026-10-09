@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from app.config import get_settings
+
+if TYPE_CHECKING:
+    from app.db.models.group import Group
 
 # Models reached through POST /v1/audio/transcriptions (OpenAI-compatible).
 TRANSCRIPTION_ENDPOINT_MODELS = frozenset({
@@ -9,29 +14,20 @@ TRANSCRIPTION_ENDPOINT_MODELS = frozenset({
     "gpt-4o-transcribe",
 })
 
-# Models that perceive audio natively but are only reachable through
-# POST /v1/chat/completions with an inline base64 `input_audio` part. The
-# transcription endpoint rejects these with HTTP 400.
-CHAT_AUDIO_MODELS = frozenset({
-    "gemini-3.8-flash",
-    "gemini-3-flash-preview",
-    "gemini-3.5-flash",
-    "gemini-3.7-flash",
-    "gemini-3.6-flash",
+# Models that perceive audio natively and are only reachable through the native
+# generateContent endpoint. The gateway's OpenAI-shaped chat input_audio path
+# returned unrelated text in live controls, so these must not use it.
+GEMINI_MODELS = frozenset({
     "gemini-2.5-flash",
     "gemini-2.5-pro",
+    "gemini-3.8-flash",
 })
 
-SUPPORTED_MODELS = TRANSCRIPTION_ENDPOINT_MODELS | CHAT_AUDIO_MODELS
+SUPPORTED_MODELS = GEMINI_MODELS | TRANSCRIPTION_ENDPOINT_MODELS
 
-# Gemini models stream large inline audio as one JSON body; past roughly this
-# many base64 characters the provider answers HTTP 413.
+# Gemini streams large inline audio as one JSON body; past roughly this many
+# base64 characters the provider answers HTTP 413.
 MAX_CHAT_AUDIO_BASE64_BYTES = 20 * 1024 * 1024
-
-
-def uses_chat_endpoint(model: str) -> bool:
-    """Return True when the model must be called via /v1/chat/completions."""
-    return model in CHAT_AUDIO_MODELS
 
 
 def resolve_model_chain(
@@ -40,9 +36,8 @@ def resolve_model_chain(
 ) -> list[str]:
     """Resolve a deduplicated model chain from primary + fallbacks.
 
-    Validates against SUPPORTED_MODELS and removes duplicates while preserving
-    order. A single transcription-endpoint model is always kept even when
-    duplicated, but the chain is capped so a job cannot stall indefinitely.
+    Validates against SUPPORTED_MODELS, removes duplicates while preserving
+    order, and caps at 4 models so a job cannot stall indefinitely.
     """
     ordered = [primary, *fallbacks]
     result: list[str] = []
@@ -63,3 +58,19 @@ def default_model_chain() -> list[str]:
         primary=settings.USTAGPT_PRIMARY_MODEL,
         fallbacks=settings.USTAGPT_FALLBACK_MODELS_LIST,
     )
+
+
+def group_model_chain(group: Group | None) -> list[str]:
+    """Resolve the group's saved overrides using the same policy as new jobs."""
+    settings = get_settings()
+    primary = (
+        group.primary_model
+        if group and group.primary_model
+        else settings.USTAGPT_PRIMARY_MODEL
+    )
+    fallbacks = (
+        group.fallback_models
+        if group and group.fallback_models is not None
+        else settings.USTAGPT_FALLBACK_MODELS_LIST
+    )
+    return resolve_model_chain(primary, fallbacks)

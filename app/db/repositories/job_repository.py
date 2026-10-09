@@ -67,9 +67,7 @@ class JobRepository:
         self._session.commit()
         return job
 
-    def set_status_message_id(
-        self, job_id: uuid.UUID, status_message_id: int
-    ) -> None:
+    def set_status_message_id(self, job_id: uuid.UUID, status_message_id: int) -> None:
         stmt = (
             update(TranscriptionJob)
             .where(TranscriptionJob.id == job_id)
@@ -99,6 +97,9 @@ class JobRepository:
             job.completed_at = datetime.now(UTC)
         self._session.commit()
         return job
+
+    def close(self) -> None:
+        self._session.close()
 
     def get_failed(self) -> list[TranscriptionJob]:
         stmt = (

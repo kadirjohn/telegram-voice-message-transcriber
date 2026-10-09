@@ -33,5 +33,13 @@ class EmptyTranscriptError(RuntimeError):
     """UstaGPT returned a successful response with an empty transcript."""
 
 
+class NoSpeechDetectedError(RuntimeError):
+    """The recording did not contain enough detected speech to transcribe."""
+
+
+class SuspiciousTranscriptError(RuntimeError):
+    """A transcript has an implausible length or severe repetition."""
+
+
 class TelegramDeliveryError(RuntimeError):
     """Failed to send or edit a message on Telegram."""
